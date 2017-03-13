@@ -70,26 +70,13 @@ private:
 	std::string _priv_key;
 	redisContext* _meta_redis_conn;
 	std::vector<redis_conn *> _redis_conns;
-	std::map<uint32_t, std::map<uint32_t, uint8_t *>> _packets;
+	std::map<uint32_t, std::map<uint64_t, uint8_t *>> _packets;
+	int cpu_id;
 public:
 	Flusher() {
 	}
-	Flusher(std::string objstor_addr, int objstor_port, std::string priv_key, int k, int m)
-	: _k(k)
-	, _m(m)
-	, _objstor_addr(objstor_addr)
-	, _objstor_port(objstor_port)
-	, _priv_key(priv_key)
-	{
-		_redis_conns.resize(k+m+1);
-		_redis_conns.reserve(_k + _m + 1);
-		_redis_conns.resize(_k + _m + 1);
-		
-		// create conenctions to metadata server
-		_meta_redis_conn = create_meta_redis_conn();
-	}
-
-
+	Flusher(std::string objstor_addr, int objstor_port, std::string priv_key, int k, int m);
+	void reg();
 	void init_redis_conns() {
 		auto num = 1 + _k + _m;
 		for(int i=0; i < num; i++) {
@@ -100,6 +87,10 @@ public:
 				_redis_conns[i] = std::move(conn);
 			});
 		}
+	}
+
+	void hello() {
+		std::cout << " hello\n";
 	}
 
 	redisContext *create_meta_redis_conn() {
@@ -113,9 +104,7 @@ public:
 		return c;
 	}
 
-	void add_packet(uint8_t *packet, uint32_t vol_id, uint64_t seq) {
-		_packets[vol_id][seq] = packet;
-	}
+	void add_packet(uint8_t *packet, uint32_t vol_id, uint64_t seq);
 
 	future<> check_do_flush(uint32_t vol_id);
 
@@ -136,4 +125,5 @@ public:
 	void encodeBlock(uint8_t *encoded, int len, TlogBlock::Builder* builder);
 };
 
+Flusher* get_flusher(shard_id id);
 #endif

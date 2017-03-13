@@ -10,6 +10,7 @@
 // C++
 #include <iostream>
 #include <assert.h>
+#include <vector>
 
 
 #include "redis_conn.h"
@@ -23,6 +24,8 @@ future<> slow() {
     return sleep(std::chrono::seconds(10000000));
 }
 namespace tlog {
+
+static std::vector<void *> servers;
 
 using clock_type = lowres_clock;
 
@@ -102,6 +105,7 @@ public:
     {
 		_flusher = Flusher(_objstor_addr, _objstor_port, _priv_key, K, M);
 		_flusher.init_redis_conns();
+		_flusher.reg();
 		std::cout << "start tlog with objstor_addr = " << _objstor_addr << ". objstor port = " << _objstor_port << "\n";
 	}
 
@@ -158,9 +162,14 @@ public:
 		memcpy(&vol_id, packet + 24, 4);
 		memcpy(&seq, packet + 32, 8);
 
-		return smp::submit_to(vol_id % smp::count, [this, packet, vol_id, seq] {
-				_flusher.add_packet(packet, vol_id, seq);
-				return _flusher.check_do_flush(vol_id);
+		return smp::submit_to(vol_id % smp::count, [packet, vol_id, seq] {
+				std::cout << "seq=" << seq << "\n";
+				auto flusher = get_flusher(engine().cpu_id());
+				uint8_t *new_packet = (uint8_t *) malloc(BUF_SIZE);
+				memcpy(new_packet, packet, BUF_SIZE);
+				free(packet);
+				flusher->add_packet(new_packet, vol_id, seq);
+				return flusher->check_do_flush(vol_id);
 				});
 	}
 
@@ -175,6 +184,7 @@ int main(int ac, char** av) {
     distributed<tlog::tcp_server> tcp_server;
 
     app_template app;
+	std::cout << "num cpu = " << smp::count << "\n";
     return app.run_deprecated(ac, av, [&] {
         engine().at_exit([&] { return tcp_server.stop(); });
         engine().at_exit([&] { return system_stats.stop(); });

@@ -16,6 +16,7 @@
 
 static int flush_count = 0;
 
+static std::vector<Flusher *> _flushers(100);
 /* save last hash to memory */
 static std::map<uint32_t, uint8_t *> g_last_hash;
 
@@ -33,7 +34,32 @@ static const int CAPNP_OUTBUF_EXTRA = 300;
 /* number of tlog before we flush it to storage */
 const int FLUSH_SIZE = 25;
 
+Flusher::Flusher(std::string objstor_addr, int objstor_port, std::string priv_key, int k, int m)
+	: _k(k)
+	, _m(m)
+	, _objstor_addr(objstor_addr)
+	, _objstor_port(objstor_port)
+	, _priv_key(priv_key)
+{
+	_redis_conns.reserve(_k + _m + 1);
+	_redis_conns.resize(_k + _m + 1);
+	
+	// create conenctions to metadata server
+	_meta_redis_conn = create_meta_redis_conn();
+	std::cout << "registering flushers for core " << engine().cpu_id() << "\n";
+	_flushers[engine().cpu_id()] = this;
+	this->cpu_id = engine().cpu_id();
+}
 
+void Flusher::add_packet(uint8_t *packet, uint32_t vol_id, uint64_t seq){
+	std::cout << " size = " << this->_packets[vol_id].size() << ".seq = " << seq << "\n";
+	this->_packets[vol_id][seq] = packet;
+	std::cout << " size abis add= " << this->_packets[vol_id].size() << "\n";
+}
+
+void Flusher::reg() {
+	_flushers[engine().cpu_id()] = this;
+}
 /**
  * check if need and able to flush to certain volume.
  * call the flush if needed.
@@ -67,11 +93,14 @@ bool Flusher::pick_to_flush(uint64_t vol_id, std::queue<uint8_t *> *q) {
 	return true;
 }
 
+Flusher* get_flusher(shard_id id) {
+	return _flushers[id];
+}
 
 /* flush the packets to it's storage */
 future<> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
 	flush_count++;
-	std::cout << "flus -> " << flush_count << " at " << engine().cpu_id() << "\n";
+	std::cout << "flushhhh -> " << flush_count << " at " << engine().cpu_id() << "\n";
 
 	uint8_t last_hash[HASH_LEN];
 	int last_hash_len;
@@ -163,17 +192,27 @@ future<> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
  * 3. we need to handle if sequence number reset to 0
 */
 bool Flusher::ok_to_flush(uint32_t volID) {
-	return true;
 	auto packetsMap = _packets[volID];
-	auto it = packetsMap.cbegin();
+	//return true;
+	std::cout << "----- cpu id= " << engine().cpu_id() << "-----\n";
+	auto it = packetsMap.begin();
 	auto prev = it->first;
+	//std::cout << "------ prev="<< prev << "\n";
 	++it;
-	while (it != packetsMap.cend()) {
+	auto i=1;
+	while (it != packetsMap.end() && i < FLUSH_SIZE) {
+		//std::cout << "it first =" << it->first << "\n";
 		if (it->first != prev + 1) {
+			if (packetsMap.size() > FLUSH_SIZE * 4) {
+				std::cout << "still unordered after waiting for 4x FLUSH_SIZE\n";
+				exit(0);
+			}
+			//std::cout << "not ordered...\n";
 			return false;
 		}
 		prev = it->first;
 		++it;
+		++i;
 	}
 	return true;
 }
