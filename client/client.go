@@ -2,13 +2,13 @@ package client
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net"
+	"strconv"
+	"strings"
 	"time"
-
-	"zombiezen.com/go/capnproto2"
 )
 
 var (
@@ -38,16 +38,71 @@ func New(addr string) (*Client, error) {
 	}, nil
 }
 
-/*
-func (c *Client) resetConn() error {
-	conn, err := createConn(c.addr)
-	if err != nil {
-		return err
-	}
-	c.conn = conn
-	c.bw = bufio.NewWriter(conn)
+// Recv get channel of responses and errors
+func (c *Client) Recv() (<-chan *TlogResponse, chan error) {
+	respChan := make(chan *TlogResponse)
+	errChan := make(chan error)
+
+	go func() {
+		for {
+			tr, err := c.RecvOne()
+			if err != nil {
+				errChan <- err
+				continue
+			}
+			respChan <- tr
+		}
+	}()
+	return respChan, errChan
 }
-*/
+
+// RecvOne receive one response
+func (c *Client) RecvOne() (*TlogResponse, error) {
+	// read prefix to get the length
+	length, err := c.recvPrefix()
+	if err != nil {
+		return nil, err
+	}
+
+	// read actual data
+	data := make([]byte, length)
+	_, err = io.ReadFull(c.conn, data)
+	if err != nil {
+		return nil, err
+	}
+	return decodeResponse(data)
+}
+
+func (c *Client) recvPrefix() (int, error) {
+	// check if prefix already fully retrieved
+	endPrefix := func(data []byte) bool {
+		if len(data) < 3 {
+			return false
+		}
+		return strings.HasSuffix(string(data), "\r\n")
+	}
+
+	// min prefix len = 3
+	prefix := make([]byte, 3)
+	_, err := c.conn.Read(prefix)
+	if err != nil {
+		return 0, err
+	}
+
+	// read byte by byte
+	for !endPrefix(prefix) {
+		if len(prefix) > 6 { // prefix too long
+			return 0, fmt.Errorf("prefix too long")
+		}
+
+		temp := make([]byte, 1)
+		if _, err := c.conn.Read(temp); err != nil {
+			return 0, err
+		}
+		prefix = append(prefix, temp...)
+	}
+	return strconv.Atoi(string(prefix[:len(prefix)-2]))
+}
 
 func createConn(addr string) (*net.TCPConn, error) {
 	tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
@@ -110,29 +165,4 @@ func isNetTempErr(err error) bool {
 		return true
 	}
 	return false
-}
-
-func buildCapnp(volID uint32, seq uint64, crc uint32, lba, timestamp uint64, data []byte) ([]byte, error) {
-	msg, seg, err := capnp.NewMessage(capnp.MultiSegment(nil))
-	if err != nil {
-		return nil, fmt.Errorf("build capnp:%v", err)
-	}
-
-	block, err := NewRootTlogBlock(seg)
-	if err != nil {
-		return nil, fmt.Errorf("create block:%v", err)
-	}
-
-	block.SetVolumeId(volID)
-	block.SetSequence(seq)
-	block.SetLba(lba)
-	block.SetCrc32(crc)
-	block.SetTimestamp(timestamp)
-	block.SetSize(uint32(len(data)))
-	block.SetData(data)
-
-	buf := new(bytes.Buffer)
-
-	err = capnp.NewEncoder(buf).Encode(msg)
-	return buf.Bytes(), err
 }

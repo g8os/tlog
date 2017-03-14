@@ -36,7 +36,7 @@ func main() {
 
 	// produce the data
 	go func() {
-		for i := 0; i < 25*numFlush; i++ {
+		for i := 0; i < (25*numFlush)-10; i++ {
 			seqChan <- uint64(i)
 		}
 	}()
@@ -51,6 +51,12 @@ func main() {
 			if err != nil {
 				log.Printf("client %v died\n", idx)
 				return
+			}
+			tr, err := client.RecvOne()
+			if err != nil {
+				log.Printf("client %v failed to recv:%v\n", idx, err)
+			} else {
+				log.Printf("tlog response type=%v\n", tr.Type())
 			}
 			clientReady <- idx
 		}(seq, idx)
