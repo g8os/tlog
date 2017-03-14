@@ -44,17 +44,46 @@ Flusher::Flusher(std::string objstor_addr, int objstor_port, std::string priv_ke
 	_redis_conns.reserve(_k + _m + 1);
 	_redis_conns.resize(_k + _m + 1);
 	
-	// create conenctions to metadata server
-	_meta_redis_conn = create_meta_redis_conn();
+	create_meta_redis_conn();
+}
+
+/**
+ * post_init contains steps that (for unknown reason)
+ * can't be put inside the class constructor
+ */
+void Flusher::post_init() {
+	_flushers[engine().cpu_id()] = this;
+	init_redis_conns();
 }
 
 void Flusher::add_packet(uint8_t *packet, uint32_t vol_id, uint64_t seq){
 	this->_packets[vol_id][seq] = packet;
 }
 
-void Flusher::reg() {
-	_flushers[engine().cpu_id()] = this;
+void Flusher::init_redis_conns() {
+	auto num = 1 + _k + _m;
+		
+	for(int i=0; i < num; i++) {
+		auto port = _objstor_port + i;
+		auto ipaddr = make_ipv4_address(ipv4_addr(_objstor_addr,port));
+		connect(ipaddr).then([this, i, port] (connected_socket s) {
+				auto conn = new redis_conn(std::move(s));
+				_redis_conns[i] = std::move(conn);
+				});
+	}
 }
+
+void Flusher::create_meta_redis_conn() {
+	auto port = _objstor_port;
+
+	redisContext *c = redisConnect(_objstor_addr.c_str(), port);
+	if (c == NULL || c->err || redisEnableKeepAlive(c) != REDIS_OK) {
+		exit(-1); // TODO raise exception
+	}
+	_meta_redis_conn = c;
+}
+
+
 /**
  * check if need and able to flush to certain volume.
  * call the flush if needed.
@@ -307,7 +336,7 @@ void Flusher::get_last_hash(uint32_t volID, uint8_t *hash, int *hash_len, bool r
 	if (reply == NULL) {
 		// if we got null, we assume that redis connection is broken
 		// we create it again.
-		_meta_redis_conn = create_meta_redis_conn();
+		create_meta_redis_conn();
 		if (!retried) {
 			get_last_hash(volID, hash, hash_len, true);
 		}

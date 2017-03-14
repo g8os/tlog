@@ -75,37 +75,16 @@ public:
 	Flusher() {
 	}
 	Flusher(std::string objstor_addr, int objstor_port, std::string priv_key, int k, int m);
-	void reg();
-	void init_redis_conns() {
-		auto num = 1 + _k + _m;
-		for(int i=0; i < num; i++) {
-			auto port = _objstor_port + i;
-			auto ipaddr = make_ipv4_address(ipv4_addr(_objstor_addr,port));
-			connect(ipaddr).then([this, i, port] (connected_socket s) {
-				auto conn = new redis_conn(std::move(s));
-				_redis_conns[i] = std::move(conn);
-			});
-		}
-	}
-
-	void hello() {
-		std::cout << " hello\n";
-	}
-
-	redisContext *create_meta_redis_conn() {
-		auto port = _objstor_port;
-
-		redisContext *c = redisConnect(_objstor_addr.c_str(), port);
-
-		if (c == NULL || c->err || redisEnableKeepAlive(c) != REDIS_OK) {
-			exit(-1); // TODO raise exception
-		}
-		return c;
-	}
-
 	void add_packet(uint8_t *packet, uint32_t vol_id, uint64_t seq);
 
 	future<> check_do_flush(uint32_t vol_id);
+
+	void post_init();
+
+private:
+	void init_redis_conns();
+	
+	void create_meta_redis_conn();
 
 	bool pick_to_flush(uint64_t vol_id, std::queue<uint8_t *> *q);
 

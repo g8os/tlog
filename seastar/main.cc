@@ -102,8 +102,10 @@ public:
         , _port(port)
     {
 		_flusher = Flusher(_objstor_addr, _objstor_port, _priv_key, K, M);
-		_flusher.init_redis_conns();
-		_flusher.reg();
+		
+		// TODO : for some unknown reason, it can't be put into constructor
+		_flusher.post_init(); 
+		
 		std::cout << "start tlog with objstor_addr = " << _objstor_addr << ". objstor port = " << _objstor_port << "\n";
 	}
 
