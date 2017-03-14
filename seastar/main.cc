@@ -20,9 +20,20 @@
 #define VERSION "v1.0"
 #define VERSION_STRING PLATFORM " " VERSION
 
-future<> slow() {
-    return sleep(std::chrono::seconds(10000000));
+future<> periodic_flush() {
+        return do_for_each(boost::counting_iterator<int>(0),
+                boost::counting_iterator<int>((int)smp::count),
+                [] (int i) {
+				return smp::submit_to(i, [] {
+					auto flusher = get_flusher(engine().cpu_id());
+					return flusher->periodic_flush();
+				});
+        }).then([] {
+            // wait one second before starting the next iteration
+            return sleep(std::chrono::seconds(1));
+        });
 }
+
 namespace tlog {
 
 static std::vector<void *> servers;
@@ -221,11 +232,8 @@ int main(int ac, char** av) {
         }).then([&tcp_server] {
             return tcp_server.invoke_on_all(&tlog::tcp_server::start);
         }).then([start_stats = config.count("stats")] {
-            // what we really wanted to do here is to
-            // avoid the server to exit
-            // need a better way here than sleeping
             return repeat([] {
-                return slow().then([] { return stop_iteration::no; });
+                return periodic_flush().then([] { return stop_iteration::no; });
             });
         });
     });

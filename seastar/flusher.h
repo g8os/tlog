@@ -5,6 +5,8 @@
 #include "core/future-util.hh"
 #include "core/app-template.hh"
 
+#include <ctime>
+
 // capnp
 #include "tlog_schema.capnp.h"
 #include <capnp/message.h>
@@ -63,14 +65,30 @@ public:
 
 class Flusher {
 private:
+	/* K value of erasure encoding */
 	int _k;
+
+	/* M value of erasure encoding */
 	int _m;
+
+	/* objstor address and port */
 	std::string _objstor_addr;
 	int _objstor_port;
+
+	/* private key */
 	std::string _priv_key;
+
+	/* connection to redis meta server */
 	redisContext* _meta_redis_conn;
+
+	/* connection to storage servers */
 	std::vector<redis_conn *> _redis_conns;
+
+	/* packets cache by volume id*/
 	std::map<uint32_t, std::map<uint64_t, uint8_t *>> _packets;
+
+	/* last time we do flushing per volume id*/
+	std::map<uint32_t, time_t> _last_flush_time;
 public:
 	Flusher() {
 	}
@@ -78,6 +96,8 @@ public:
 	void add_packet(uint8_t *packet, uint32_t vol_id, uint64_t seq);
 
 	future<> check_do_flush(uint32_t vol_id);
+	
+	future<> periodic_flush();
 
 	void post_init();
 
@@ -90,7 +110,7 @@ private:
 
 	future<> flush(uint32_t volID, std::queue<uint8_t *> pq);
 
-	bool ok_to_flush(uint32_t volID);
+	bool ok_to_flush(uint32_t vol_id, int flush_size);
 
 	future<> storeEncodedAgg(uint64_t vol_id, uint8_t *hash, int hash_len,
 			unsigned char **data, unsigned char **coding, int chunksize);

@@ -33,6 +33,7 @@ static const int CAPNP_OUTBUF_EXTRA = 300;
 
 /* number of tlog before we flush it to storage */
 const int FLUSH_SIZE = 25;
+const int FLUSH_TIMEOUT = 25;
 
 Flusher::Flusher(std::string objstor_addr, int objstor_port, std::string priv_key, int k, int m)
 	: _k(k)
@@ -91,6 +92,9 @@ void Flusher::create_meta_redis_conn() {
 future<> Flusher::check_do_flush(uint32_t vol_id) {
 	std::queue<uint8_t *> flush_q;
 	
+	if (!ok_to_flush(vol_id, FLUSH_SIZE)) {
+		return make_ready_future<>();
+	}
 	if (_packets[vol_id].size() < FLUSH_SIZE) {
 		return make_ready_future<>();
 	}
@@ -100,15 +104,50 @@ future<> Flusher::check_do_flush(uint32_t vol_id) {
 	return flush(vol_id, flush_q);
 }
 
+// check if we can do periodic flush on this core
+future<> Flusher::periodic_flush() {
+	std::vector<uint32_t> vols;
+	for (auto const &it: _packets) {
+		vols.push_back(it.first);
+	}
+	return do_for_each(vols, [this] (uint32_t vol_id) {
+		// if needed, initialize last_flush_time on this vol id
+		if (_last_flush_time.find(vol_id) == _last_flush_time.end()) {
+			_last_flush_time[vol_id] = time(0);
+		}
+
+		if (_packets[vol_id].size() == 0) {
+			return make_ready_future<>();
+		}
+
+		auto diff = difftime(time(0), _last_flush_time[vol_id]);
+		if (diff < FLUSH_TIMEOUT) {
+			return make_ready_future<>();
+		}
+
+		if (!ok_to_flush(vol_id, _packets[vol_id].size())) {
+			return make_ready_future<>();
+		}
+		std::queue<uint8_t *> flush_q;
+		if (pick_to_flush(vol_id, &flush_q) == false) {
+			return make_ready_future<>();
+		}
+		return flush(vol_id, flush_q).then([] {
+				std::cout << "flush finished at core:" << engine().cpu_id() << "\n";
+				return make_ready_future<>();
+				});
+	}).then([] {
+			return make_ready_future<>();
+            //return sleep(std::chrono::seconds(2));
+		});
+}
+
 /**
  * pick packets to be flushed.
  * It must be called under flush & sem lock
 */
 
 bool Flusher::pick_to_flush(uint64_t vol_id, std::queue<uint8_t *> *q) {
-	if (!ok_to_flush(vol_id)) {
-		return false;
-	}
 	auto it = _packets[vol_id].begin();
 	for (int i=0; i  < FLUSH_SIZE && it != _packets[vol_id].end(); i++) {
 		q->push(it->second);
@@ -124,8 +163,10 @@ Flusher* get_flusher(shard_id id) {
 /* flush the packets to it's storage */
 future<> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
 	flush_count++;
-	std::cout << "[flush] vol:" << volID <<". count:"<< flush_count;
-	std::cout << ". at core: " << engine().cpu_id() << "\n";
+	std::cout << "[flush] vol:" << volID <<".count:"<< flush_count;
+	std::cout << ".flush_size:" << pq.size() << ".at core:" << engine().cpu_id() << "\n";
+
+	_last_flush_time[volID] = time(0);
 
 	uint8_t last_hash[HASH_LEN];
 	int last_hash_len;
@@ -216,13 +257,13 @@ future<> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
  * 2. we have all sequences neded
  * 3. we need to handle if sequence number reset to 0
 */
-bool Flusher::ok_to_flush(uint32_t volID) {
-	auto packetsMap = _packets[volID];
+bool Flusher::ok_to_flush(uint32_t vol_id, int flush_size) {
+	auto packetsMap = _packets[vol_id];
 	auto it = packetsMap.begin();
 	auto prev = it->first;
 	++it;
 	auto i=1;
-	while (it != packetsMap.end() && i < FLUSH_SIZE) {
+	while (it != packetsMap.end() && i < flush_size) {
 		if (it->first != prev + 1) {
 			return false;
 		}
