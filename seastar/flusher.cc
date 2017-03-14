@@ -88,17 +88,17 @@ void Flusher::create_meta_redis_conn() {
  * check if need and able to flush to certain volume.
  * call the flush if needed.
 */
-future<> Flusher::check_do_flush(uint32_t vol_id) {
+future<bool> Flusher::check_do_flush(uint32_t vol_id) {
 	std::queue<uint8_t *> flush_q;
 	
 	if (!ok_to_flush(vol_id, _flush_size)) {
-		return make_ready_future<>();
+		return make_ready_future<bool>(false);
 	}
 	if (_packets[vol_id].size() < (unsigned)_flush_size) {
-		return make_ready_future<>();
+		return make_ready_future<bool>(false);
 	}
 	if (pick_to_flush(vol_id, &flush_q, _flush_size) == false) {
-		return make_ready_future<>();
+		return make_ready_future<bool>(false);
 	}
 	return flush(vol_id, flush_q);
 }
@@ -132,7 +132,7 @@ future<> Flusher::periodic_flush() {
 		if (pick_to_flush(vol_id, &flush_q, _packets[vol_id].size()) == false) {
 			return make_ready_future<>();
 		}
-		return flush(vol_id, flush_q).then([] {
+		return flush(vol_id, flush_q).then([] (auto result) {
 				std::cout << "periodic flush at core:" << engine().cpu_id() << "\n";
 				return make_ready_future<>();
 				});
@@ -161,7 +161,7 @@ Flusher* get_flusher(shard_id id) {
 }
 
 /* flush the packets to it's storage */
-future<> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
+future<bool> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
 	flush_count++;
 	std::cout << "[flush] vol:" << volID <<".count:"<< flush_count;
 	std::cout << ".flush_size:" << pq.size() << ".at core:" << engine().cpu_id() << "\n";
@@ -247,7 +247,7 @@ future<> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
 							free(coding[i]);
 						}
 						free(coding);
-						return make_ready_future<>();
+						return make_ready_future<bool>(true);
 				});
 }
 	

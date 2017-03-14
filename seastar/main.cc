@@ -157,7 +157,7 @@ public:
 				// we close it for simplicity.
             	if (buf && buf.size() == BUF_SIZE) {
 					std::memcpy(packet, buf.get(), buf.size());
-					return handle_packet(packet).then([]{
+					return handle_packet(packet, out).then([]{
 						return make_ready_future<stop_iteration>(stop_iteration::no);
 					});
             	} else {
@@ -170,21 +170,40 @@ public:
 
 	}
 
-	future<> handle_packet(uint8_t *packet) {
+	future<> handle_packet(uint8_t *packet, output_stream<char>& out) {
 		// get volume ID
 		uint32_t vol_id;
 		uint64_t seq;
 		memcpy(&vol_id, packet + 24, 4);
 		memcpy(&seq, packet + 32, 8);
 
-		return smp::submit_to(vol_id % smp::count, [packet, vol_id, seq] {
+		return smp::submit_to(vol_id % smp::count, [this, packet, vol_id, seq, &out] {
 				auto flusher = get_flusher(engine().cpu_id());
 				flusher->add_packet(packet, vol_id, seq);
 				return flusher->check_do_flush(vol_id);
-				});
+		}).then([this, &out] (auto is_flush) {
+			return this->send_response(out, 1);
+		});
 	}
 
 private:
+	future<> send_response(output_stream<char>& out, int status) {
+		::capnp::MallocMessageBuilder msg;
+		auto agg = msg.initRoot<TlogResponse>();
+		
+		agg.setType(status);
+		kj::byte outbuf[100]; // TODO : find the optimal buffer size
+		kj::ArrayOutputStream aos(kj::arrayPtr(outbuf, sizeof(outbuf)));
+		writeMessage(aos, msg);
+		kj::ArrayPtr<kj::byte> bs = aos.getArray();
+
+		std::string prefix = std::to_string(bs.size()) + "\r\n";
+		return out.write(prefix).then([&out, bs] {
+			return out.write((const char *)bs.begin(), bs.size());
+		}).then([&out] {
+			return out.flush();
+		});
+	}
 };
 
 

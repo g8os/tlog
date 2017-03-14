@@ -104,7 +104,7 @@ public:
 			int flush_size, int flush_timeout, int k, int m);
 	void add_packet(uint8_t *packet, uint32_t vol_id, uint64_t seq);
 
-	future<> check_do_flush(uint32_t vol_id);
+	future<bool> check_do_flush(uint32_t vol_id);
 	
 	future<> periodic_flush();
 
@@ -117,7 +117,7 @@ private:
 
 	bool pick_to_flush(uint64_t vol_id, std::queue<uint8_t *> *q, int flush_size);
 
-	future<> flush(uint32_t volID, std::queue<uint8_t *> pq);
+	future<bool> flush(uint32_t volID, std::queue<uint8_t *> pq);
 
 	bool ok_to_flush(uint32_t vol_id, int flush_size);
 

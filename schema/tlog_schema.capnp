@@ -1,5 +1,10 @@
 @0xf4533cbae6e08506;
 
+struct TlogResponse {
+	type @0 :UInt8;
+	sequences @1 :List(UInt64);
+	# only exist in flush response
+}
 struct TlogBlock {
 	volumeId @0 :UInt32;
 	sequence @1 :UInt64;
