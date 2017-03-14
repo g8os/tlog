@@ -46,6 +46,10 @@ const int BUF_SIZE = 16472; /* size of the message we receive from client */
 int K = 4;
 int M = 2;
 
+/* flush settings */
+int FLUSH_TIME;
+int FLUSH_SIZE;
+
 struct system_stats {
     uint32_t _curr_connections {};
     uint32_t _total_connections {};
@@ -112,7 +116,8 @@ public:
 		, _priv_key(priv_key)
         , _port(port)
     {
-		_flusher = Flusher(_objstor_addr, _objstor_port, _priv_key, K, M);
+		_flusher = Flusher(_objstor_addr, _objstor_port, _priv_key, 
+				FLUSH_SIZE, FLUSH_TIME, K, M);
 		
 		// TODO : for some unknown reason, it can't be put into constructor
 		_flusher.post_init();
@@ -194,6 +199,8 @@ int main(int ac, char** av) {
 
 	app.add_options()
 		("port", bpo::value<uint16_t>()->default_value(11211), "tcp port")
+		("flush_size", bpo::value<int>()->default_value(25), "flush_size")
+		("flush_time", bpo::value<int>()->default_value(25), "flush_time (seconds)")
 		("k", bpo::value<int>()->default_value(4), "K variable of erasure encoding")
 		("m", bpo::value<int>()->default_value(2), "M variable of erasure encoding")
 		("objstor_addr", bpo::value<std::string>()->default_value("127.0.0.1"), "objstor address")
@@ -213,6 +220,8 @@ int main(int ac, char** av) {
 		std::string priv_key = config["priv_key"].as<std::string>();
 		tlog::K = config["k"].as<int>();
 		tlog::M = config["m"].as<int>();
+		tlog::FLUSH_SIZE = config["flush_size"].as<int>();
+		tlog::FLUSH_TIME = config["flush_time"].as<int>();
 
 		// print options
 		std::cout << "======= TLOG server options ======\n";
@@ -220,6 +229,8 @@ int main(int ac, char** av) {
 		std::cout << "objstor_addr = " << objstor_addr << "\n";
 		std::cout << "objstor_port = " << objstor_port << "\n";
 		std::cout << "erasure encoding K="<< tlog::K << ". M = " << tlog::M << "\n";
+		std::cout << "flush size = " << tlog::FLUSH_TIME << " packets\n";
+		std::cout << "flush time = " << tlog::FLUSH_TIME << " seconds\n";
 		std::cout << "private key = " << priv_key << "\n";
 		std::cout << "==================================\n";
 

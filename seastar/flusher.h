@@ -65,6 +65,14 @@ public:
 
 class Flusher {
 private:
+	/* min number of packets before being flushed */
+	int _flush_size;
+
+	/* min number of seconds before packets being flushed
+	 * without waiting it to reach _flush_size
+	 */
+	int _flush_timeout;
+
 	/* K value of erasure encoding */
 	int _k;
 
@@ -92,7 +100,8 @@ private:
 public:
 	Flusher() {
 	}
-	Flusher(std::string objstor_addr, int objstor_port, std::string priv_key, int k, int m);
+	Flusher(std::string objstor_addr, int objstor_port, std::string priv_key, 
+			int flush_size, int flush_timeout, int k, int m);
 	void add_packet(uint8_t *packet, uint32_t vol_id, uint64_t seq);
 
 	future<> check_do_flush(uint32_t vol_id);
@@ -106,7 +115,7 @@ private:
 	
 	void create_meta_redis_conn();
 
-	bool pick_to_flush(uint64_t vol_id, std::queue<uint8_t *> *q);
+	bool pick_to_flush(uint64_t vol_id, std::queue<uint8_t *> *q, int flush_size);
 
 	future<> flush(uint32_t volID, std::queue<uint8_t *> pq);
 

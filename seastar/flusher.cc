@@ -31,12 +31,11 @@ static const int BUF_SIZE = 16472; /* size of the message we receive from client
  * */
 static const int CAPNP_OUTBUF_EXTRA = 300;
 
-/* number of tlog before we flush it to storage */
-const int FLUSH_SIZE = 25;
-const int FLUSH_TIMEOUT = 25;
-
-Flusher::Flusher(std::string objstor_addr, int objstor_port, std::string priv_key, int k, int m)
-	: _k(k)
+Flusher::Flusher(std::string objstor_addr, int objstor_port, std::string priv_key, 
+		int flush_size, int flush_timeout, int k, int m)
+	: _flush_size(flush_size)
+	, _flush_timeout(flush_timeout)
+	, _k(k)
 	, _m(m)
 	, _objstor_addr(objstor_addr)
 	, _objstor_port(objstor_port)
@@ -92,13 +91,13 @@ void Flusher::create_meta_redis_conn() {
 future<> Flusher::check_do_flush(uint32_t vol_id) {
 	std::queue<uint8_t *> flush_q;
 	
-	if (!ok_to_flush(vol_id, FLUSH_SIZE)) {
+	if (!ok_to_flush(vol_id, _flush_size)) {
 		return make_ready_future<>();
 	}
-	if (_packets[vol_id].size() < FLUSH_SIZE) {
+	if (_packets[vol_id].size() < (unsigned)_flush_size) {
 		return make_ready_future<>();
 	}
-	if (pick_to_flush(vol_id, &flush_q) == false) {
+	if (pick_to_flush(vol_id, &flush_q, _flush_size) == false) {
 		return make_ready_future<>();
 	}
 	return flush(vol_id, flush_q);
@@ -121,19 +120,20 @@ future<> Flusher::periodic_flush() {
 		}
 
 		auto diff = difftime(time(0), _last_flush_time[vol_id]);
-		if (diff < FLUSH_TIMEOUT) {
+		if (diff < _flush_timeout) {
 			return make_ready_future<>();
 		}
 
 		if (!ok_to_flush(vol_id, _packets[vol_id].size())) {
 			return make_ready_future<>();
 		}
+
 		std::queue<uint8_t *> flush_q;
-		if (pick_to_flush(vol_id, &flush_q) == false) {
+		if (pick_to_flush(vol_id, &flush_q, _packets[vol_id].size()) == false) {
 			return make_ready_future<>();
 		}
 		return flush(vol_id, flush_q).then([] {
-				std::cout << "flush finished at core:" << engine().cpu_id() << "\n";
+				std::cout << "periodic flush at core:" << engine().cpu_id() << "\n";
 				return make_ready_future<>();
 				});
 	}).then([] {
@@ -147,9 +147,9 @@ future<> Flusher::periodic_flush() {
  * It must be called under flush & sem lock
 */
 
-bool Flusher::pick_to_flush(uint64_t vol_id, std::queue<uint8_t *> *q) {
+bool Flusher::pick_to_flush(uint64_t vol_id, std::queue<uint8_t *> *q, int flush_size) {
 	auto it = _packets[vol_id].begin();
-	for (int i=0; i  < FLUSH_SIZE && it != _packets[vol_id].end(); i++) {
+	for (int i=0; i  < flush_size && it != _packets[vol_id].end(); i++) {
 		q->push(it->second);
 		it = _packets[vol_id].erase(it);
 	}
