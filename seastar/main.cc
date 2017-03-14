@@ -35,8 +35,6 @@ const int BUF_SIZE = 16472; /* size of the message we receive from client */
 const int K = 4;
 const int M = 2;
 
-const int CAPNP_OUTBUF_EXTRA = 300;
-
 struct system_stats {
     uint32_t _curr_connections {};
     uint32_t _total_connections {};
@@ -163,12 +161,8 @@ public:
 		memcpy(&seq, packet + 32, 8);
 
 		return smp::submit_to(vol_id % smp::count, [packet, vol_id, seq] {
-				std::cout << "seq=" << seq << "\n";
 				auto flusher = get_flusher(engine().cpu_id());
-				uint8_t *new_packet = (uint8_t *) malloc(BUF_SIZE);
-				memcpy(new_packet, packet, BUF_SIZE);
-				free(packet);
-				flusher->add_packet(new_packet, vol_id, seq);
+				flusher->add_packet(packet, vol_id, seq);
 				return flusher->check_do_flush(vol_id);
 				});
 	}

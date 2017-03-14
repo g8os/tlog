@@ -71,7 +71,6 @@ private:
 	redisContext* _meta_redis_conn;
 	std::vector<redis_conn *> _redis_conns;
 	std::map<uint32_t, std::map<uint64_t, uint8_t *>> _packets;
-	int cpu_id;
 public:
 	Flusher() {
 	}

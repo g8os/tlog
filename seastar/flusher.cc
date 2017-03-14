@@ -46,15 +46,10 @@ Flusher::Flusher(std::string objstor_addr, int objstor_port, std::string priv_ke
 	
 	// create conenctions to metadata server
 	_meta_redis_conn = create_meta_redis_conn();
-	std::cout << "registering flushers for core " << engine().cpu_id() << "\n";
-	_flushers[engine().cpu_id()] = this;
-	this->cpu_id = engine().cpu_id();
 }
 
 void Flusher::add_packet(uint8_t *packet, uint32_t vol_id, uint64_t seq){
-	std::cout << " size = " << this->_packets[vol_id].size() << ".seq = " << seq << "\n";
 	this->_packets[vol_id][seq] = packet;
-	std::cout << " size abis add= " << this->_packets[vol_id].size() << "\n";
 }
 
 void Flusher::reg() {
@@ -100,7 +95,8 @@ Flusher* get_flusher(shard_id id) {
 /* flush the packets to it's storage */
 future<> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
 	flush_count++;
-	std::cout << "flushhhh -> " << flush_count << " at " << engine().cpu_id() << "\n";
+	std::cout << "[flush] vol:" << volID <<". count:"<< flush_count;
+	std::cout << ". at core: " << engine().cpu_id() << "\n";
 
 	uint8_t last_hash[HASH_LEN];
 	int last_hash_len;
@@ -193,21 +189,12 @@ future<> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
 */
 bool Flusher::ok_to_flush(uint32_t volID) {
 	auto packetsMap = _packets[volID];
-	//return true;
-	std::cout << "----- cpu id= " << engine().cpu_id() << "-----\n";
 	auto it = packetsMap.begin();
 	auto prev = it->first;
-	//std::cout << "------ prev="<< prev << "\n";
 	++it;
 	auto i=1;
 	while (it != packetsMap.end() && i < FLUSH_SIZE) {
-		//std::cout << "it first =" << it->first << "\n";
 		if (it->first != prev + 1) {
-			if (packetsMap.size() > FLUSH_SIZE * 4) {
-				std::cout << "still unordered after waiting for 4x FLUSH_SIZE\n";
-				exit(0);
-			}
-			//std::cout << "not ordered...\n";
 			return false;
 		}
 		prev = it->first;
