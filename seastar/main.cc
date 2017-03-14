@@ -32,8 +32,8 @@ using clock_type = lowres_clock;
 const int BUF_SIZE = 16472; /* size of the message we receive from client */
 
 /* erasure encoding variable */
-const int K = 4;
-const int M = 2;
+int K = 4;
+int M = 2;
 
 struct system_stats {
     uint32_t _curr_connections {};
@@ -104,9 +104,8 @@ public:
 		_flusher = Flusher(_objstor_addr, _objstor_port, _priv_key, K, M);
 		
 		// TODO : for some unknown reason, it can't be put into constructor
-		_flusher.post_init(); 
-		
-		std::cout << "start tlog with objstor_addr = " << _objstor_addr << ". objstor port = " << _objstor_port << "\n";
+		_flusher.post_init();
+		std::cout << "TCP server started at core " << engine().cpu_id() << "\n";
 	}
 
     void start() {
@@ -179,19 +178,39 @@ int main(int ac, char** av) {
     distributed<tlog::system_stats> system_stats;
     distributed<tlog::tcp_server> tcp_server;
 
+	namespace bpo = boost::program_options;
     app_template app;
-	std::cout << "num cpu = " << smp::count << "\n";
+
+	app.add_options()
+		("port", bpo::value<uint16_t>()->default_value(11211), "tcp port")
+		("k", bpo::value<int>()->default_value(4), "K variable of erasure encoding")
+		("m", bpo::value<int>()->default_value(2), "M variable of erasure encoding")
+		("objstor_addr", bpo::value<std::string>()->default_value("127.0.0.1"), "objstor address")
+		("objstor_port", bpo::value<int>()->default_value(16379), "objstor first port")
+		("priv_key", bpo::value<std::string>()->default_value("my-secret-key"), "private key")
+
+		;
     return app.run_deprecated(ac, av, [&] {
         engine().at_exit([&] { return tcp_server.stop(); });
         engine().at_exit([&] { return system_stats.stop(); });
 
         auto&& config = app.configuration();
 
-		// TODO : make thse configs configurable
-        uint16_t port = 11211;
-		std::string objstor_addr = "127.0.0.1";
-		int objstor_port = 16379;
-		std::string priv_key = "my-secret-key";
+        uint16_t port = config["port"].as<uint16_t>();
+		std::string objstor_addr = config["objstor_addr"].as<std::string>();
+		int objstor_port = config["objstor_port"].as<int>();
+		std::string priv_key = config["priv_key"].as<std::string>();
+		tlog::K = config["k"].as<int>();
+		tlog::M = config["m"].as<int>();
+
+		// print options
+		std::cout << "======= TLOG server options ======\n";
+		std::cout << "tcp port = " << port <<"\n";
+		std::cout << "objstor_addr = " << objstor_addr << "\n";
+		std::cout << "objstor_port = " << objstor_port << "\n";
+		std::cout << "erasure encoding K="<< tlog::K << ". M = " << tlog::M << "\n";
+		std::cout << "private key = " << priv_key << "\n";
+		std::cout << "==================================\n";
 
         return system_stats.start(tlog::clock_type::now()).then([&] {
             std::cout << PLATFORM << " tlog " << VERSION << "\n";
