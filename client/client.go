@@ -16,6 +16,11 @@ var (
 	ErrClosed         = errors.New("connection closed")
 )
 
+type Response struct {
+	Status    int8     // status of the call, negatif means failed
+	Sequences []uint64 // flushed sequences number, if any
+}
+
 // Client defines a Tlog Client.
 // This client is not thread/goroutine safe
 type Client struct {
@@ -39,8 +44,8 @@ func New(addr string) (*Client, error) {
 }
 
 // Recv get channel of responses and errors
-func (c *Client) Recv() (<-chan *TlogResponse, chan error) {
-	respChan := make(chan *TlogResponse)
+func (c *Client) Recv() (<-chan *Response, <-chan error) {
+	respChan := make(chan *Response)
 	errChan := make(chan error)
 
 	go func() {
@@ -57,7 +62,7 @@ func (c *Client) Recv() (<-chan *TlogResponse, chan error) {
 }
 
 // RecvOne receive one response
-func (c *Client) RecvOne() (*TlogResponse, error) {
+func (c *Client) RecvOne() (*Response, error) {
 	// read prefix to get the length
 	length, err := c.recvPrefix()
 	if err != nil {
@@ -70,7 +75,25 @@ func (c *Client) RecvOne() (*TlogResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	return decodeResponse(data)
+
+	// decode capnp and build response
+	tr, err := decodeResponse(data)
+	if err != nil {
+		return nil, err
+	}
+
+	capSeqs, err := tr.Sequences()
+	if err != nil {
+		return nil, err
+	}
+	seqs := []uint64{}
+	for i := 0; i < capSeqs.Len(); i++ {
+		seqs = append(seqs, capSeqs.At(i))
+	}
+	return &Response{
+		Status:    tr.Status(),
+		Sequences: seqs,
+	}, nil
 }
 
 func (c *Client) recvPrefix() (int, error) {
