@@ -86,7 +86,7 @@ public:
   }
 #endif  // !CAPNP_LITE
 
-  inline  ::uint8_t getType() const;
+  inline  ::int8_t getStatus() const;
 
   inline bool hasSequences() const;
   inline  ::capnp::List< ::uint64_t>::Reader getSequences() const;
@@ -119,8 +119,8 @@ public:
   inline ::kj::StringTree toString() const { return asReader().toString(); }
 #endif  // !CAPNP_LITE
 
-  inline  ::uint8_t getType();
-  inline void setType( ::uint8_t value);
+  inline  ::int8_t getStatus();
+  inline void setStatus( ::int8_t value);
 
   inline bool hasSequences();
   inline  ::capnp::List< ::uint64_t>::Builder getSequences();
@@ -385,17 +385,17 @@ private:
 
 // =======================================================================================
 
-inline  ::uint8_t TlogResponse::Reader::getType() const {
-  return _reader.getDataField< ::uint8_t>(
+inline  ::int8_t TlogResponse::Reader::getStatus() const {
+  return _reader.getDataField< ::int8_t>(
       0 * ::capnp::ELEMENTS);
 }
 
-inline  ::uint8_t TlogResponse::Builder::getType() {
-  return _builder.getDataField< ::uint8_t>(
+inline  ::int8_t TlogResponse::Builder::getStatus() {
+  return _builder.getDataField< ::int8_t>(
       0 * ::capnp::ELEMENTS);
 }
-inline void TlogResponse::Builder::setType( ::uint8_t value) {
-  _builder.setDataField< ::uint8_t>(
+inline void TlogResponse::Builder::setStatus( ::int8_t value) {
+  _builder.setDataField< ::int8_t>(
       0 * ::capnp::ELEMENTS, value);
 }
 

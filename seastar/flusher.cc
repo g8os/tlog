@@ -88,17 +88,19 @@ void Flusher::create_meta_redis_conn() {
  * check if need and able to flush to certain volume.
  * call the flush if needed.
 */
-future<bool> Flusher::check_do_flush(uint32_t vol_id) {
+future<flush_result> Flusher::check_do_flush(uint32_t vol_id) {
 	std::queue<uint8_t *> flush_q;
+	flush_result fr;
+	fr.status = FLUSH_NO;
 	
 	if (!ok_to_flush(vol_id, _flush_size)) {
-		return make_ready_future<bool>(false);
+		return make_ready_future<flush_result>(fr);
 	}
 	if (_packets[vol_id].size() < (unsigned)_flush_size) {
-		return make_ready_future<bool>(false);
+		return make_ready_future<flush_result>(fr);
 	}
 	if (pick_to_flush(vol_id, &flush_q, _flush_size) == false) {
-		return make_ready_future<bool>(false);
+		return make_ready_future<flush_result>(fr);
 	}
 	return flush(vol_id, flush_q);
 }
@@ -161,7 +163,10 @@ Flusher* get_flusher(shard_id id) {
 }
 
 /* flush the packets to it's storage */
-future<bool> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
+future<flush_result> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
+	flush_result fr;
+	fr.status = FLUSH_MAX_TLOGS_OK;
+
 	flush_count++;
 	std::cout << "[flush] vol:" << volID <<".count:"<< flush_count;
 	std::cout << ".flush_size:" << pq.size() << ".at core:" << engine().cpu_id() << "\n";
@@ -193,6 +198,7 @@ future<bool> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
 		auto packet = pq.front();
 		pq.pop();
 		encodeBlock(packet, BUF_SIZE, &block);
+		fr.sequences.push_back(block.getSequence());
 		free(packet);
 	}
 
@@ -236,7 +242,7 @@ future<bool> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
 			last_hash, last_hash_len);
 		
 	return storeEncodedAgg(volID, hash, hash_len, inputs, coding,
-					chunksize).then([this, hash, inputs, coding] {
+					chunksize).then([this, hash, inputs, coding, fr] {
 				
 						free(hash);
 					
@@ -247,7 +253,7 @@ future<bool> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
 							free(coding[i]);
 						}
 						free(coding);
-						return make_ready_future<bool>(true);
+						return make_ready_future<flush_result>(fr);
 				});
 }
 	

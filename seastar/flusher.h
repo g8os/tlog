@@ -62,6 +62,19 @@ public:
 	}
 };
 
+enum tlog_status {
+	FLUSH_TIMEOUT_FAILED,
+	FLUSH_MAX_TLOGS_FAILED,	// flush (because of max tlogs) failed
+	FLUSH_TLOG_FAILED,		// tlog message failed to be received
+	FLUSH_NO = 0, 			// tlog message received, but no flush
+	FLUSH_MAX_TLOGS_OK,		// flush (because of max tlogs) OK
+	FLUSH_TIMEOUT_OK		// flush (because of timeout) OK
+};
+
+struct flush_result {
+	int status;
+	std::vector<uint64_t> sequences;
+};
 
 class Flusher {
 private:
@@ -104,7 +117,7 @@ public:
 			int flush_size, int flush_timeout, int k, int m);
 	void add_packet(uint8_t *packet, uint32_t vol_id, uint64_t seq);
 
-	future<bool> check_do_flush(uint32_t vol_id);
+	future<flush_result> check_do_flush(uint32_t vol_id);
 	
 	future<> periodic_flush();
 
@@ -117,7 +130,7 @@ private:
 
 	bool pick_to_flush(uint64_t vol_id, std::queue<uint8_t *> *q, int flush_size);
 
-	future<bool> flush(uint32_t volID, std::queue<uint8_t *> pq);
+	future<flush_result> flush(uint32_t volID, std::queue<uint8_t *> pq);
 
 	bool ok_to_flush(uint32_t vol_id, int flush_size);
 

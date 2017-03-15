@@ -119,7 +119,8 @@ public:
 		_flusher = Flusher(_objstor_addr, _objstor_port, _priv_key, 
 				FLUSH_SIZE, FLUSH_TIME, K, M);
 		
-		// TODO : for some unknown reason, it can't be put into constructor
+		// TODO : for some unknown reason, it can't be put into 
+		// Flusher's constructor
 		_flusher.post_init();
 		std::cout << "TCP server started at core " << engine().cpu_id() << "\n";
 	}
@@ -181,18 +182,25 @@ public:
 				auto flusher = get_flusher(engine().cpu_id());
 				flusher->add_packet(packet, vol_id, seq);
 				return flusher->check_do_flush(vol_id);
-		}).then([this, &out] (auto is_flush) {
-			return this->send_response(out, 1);
+		}).then([this, &out] (auto fr) {
+			return this->send_response(out, fr);
 		});
 	}
 
 private:
-	future<> send_response(output_stream<char>& out, int status) {
+	future<> send_response(output_stream<char>& out, flush_result fr) {
 		::capnp::MallocMessageBuilder msg;
 		auto agg = msg.initRoot<TlogResponse>();
 		
-		agg.setType(status);
-		kj::byte outbuf[100]; // TODO : find the optimal buffer size
+		agg.setStatus(fr.status);
+		auto sequences = agg.initSequences(fr.sequences.size());
+		for (unsigned i=0; i < fr.sequences.size(); i++) {
+			//auto seq = sequences[i];
+			//seq = fr.sequences[i];
+			sequences.set(i, fr.sequences[i]);
+		}
+
+		kj::byte outbuf[500]; // TODO : find the optimal buffer size
 		kj::ArrayOutputStream aos(kj::arrayPtr(outbuf, sizeof(outbuf)));
 		writeMessage(aos, msg);
 		kj::ArrayPtr<kj::byte> bs = aos.getArray();

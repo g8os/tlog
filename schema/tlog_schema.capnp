@@ -1,7 +1,7 @@
 @0xf4533cbae6e08506;
 
 struct TlogResponse {
-	type @0 :UInt8;
+	status @0 :Int8;
 	sequences @1 :List(UInt64);
 	# only exist in flush response
 }
