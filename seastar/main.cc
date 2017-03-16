@@ -195,8 +195,6 @@ private:
 		agg.setStatus(fr.status);
 		auto sequences = agg.initSequences(fr.sequences.size());
 		for (unsigned i=0; i < fr.sequences.size(); i++) {
-			//auto seq = sequences[i];
-			//seq = fr.sequences[i];
 			sequences.set(i, fr.sequences[i]);
 		}
 

@@ -1,5 +1,7 @@
 #include "flusher.h"
 
+#include "core/sleep.hh"
+
 // capnp
 #include "tlog_schema.capnp.h"
 #include <capnp/message.h>
@@ -60,16 +62,21 @@ void Flusher::add_packet(uint8_t *packet, uint32_t vol_id, uint64_t seq){
 	this->_packets[vol_id][seq] = packet;
 }
 
+future<> Flusher::init_redis_conn(int idx) {
+	auto ipaddr = make_ipv4_address(ipv4_addr(_objstor_addr,_objstor_port + idx));
+	
+	return connect(ipaddr).then([this, idx] (connected_socket s) {
+			auto conn = new redis_conn(std::move(s));
+			_redis_conns[idx] = std::move(conn);
+			return make_ready_future<>();
+		});
+}
+
 void Flusher::init_redis_conns() {
 	auto num = 1 + _k + _m;
 		
 	for(int i=0; i < num; i++) {
-		auto port = _objstor_port + i;
-		auto ipaddr = make_ipv4_address(ipv4_addr(_objstor_addr,port));
-		connect(ipaddr).then([this, i, port] (connected_socket s) {
-				auto conn = new redis_conn(std::move(s));
-				_redis_conns[i] = std::move(conn);
-				});
+		init_redis_conn(i);
 	}
 }
 
@@ -164,9 +171,6 @@ Flusher* get_flusher(shard_id id) {
 
 /* flush the packets to it's storage */
 future<flush_result> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
-	flush_result fr;
-	fr.status = FLUSH_MAX_TLOGS_OK;
-
 	flush_count++;
 	std::cout << "[flush] vol:" << volID <<".count:"<< flush_count;
 	std::cout << ".flush_size:" << pq.size() << ".at core:" << engine().cpu_id() << "\n";
@@ -192,13 +196,13 @@ future<flush_result> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
 
 	// TODO : find a way to reuse packet data to avoid
 	// memcpy
-	
+	std::vector<uint64_t> sequences;
 	for (int i=0; !pq.empty(); i++) {
 		auto block = blocks[i];
 		auto packet = pq.front();
 		pq.pop();
 		encodeBlock(packet, BUF_SIZE, &block);
-		fr.sequences.push_back(block.getSequence());
+		sequences.push_back(block.getSequence());
 		free(packet);
 	}
 
@@ -242,7 +246,7 @@ future<flush_result> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
 			last_hash, last_hash_len);
 		
 	return storeEncodedAgg(volID, hash, hash_len, inputs, coding,
-					chunksize).then([this, hash, inputs, coding, fr] {
+					chunksize).then([this, hash, inputs, coding, sequences] (auto ok){
 				
 						free(hash);
 					
@@ -252,6 +256,9 @@ future<flush_result> Flusher::flush(uint32_t volID, std::queue<uint8_t *> pq) {
 						for(int i=0; i < _m; i++) {
 							free(coding[i]);
 						}
+						flush_result fr;
+						fr.status = ok? FLUSH_MAX_TLOGS_OK : FLUSH_MAX_TLOGS_FAILED;
+						fr.sequences = sequences;
 						free(coding);
 						return make_ready_future<flush_result>(fr);
 				});
@@ -280,29 +287,31 @@ bool Flusher::ok_to_flush(uint32_t vol_id, int flush_size) {
 	return true;
 }
 	
-future<> storeEncodedAgg1(uint64_t vol_id, uint8_t *hash, int hash_len,
-		unsigned char **data, unsigned char **coding, int chunksize) {
-	return make_ready_future<>();
-}
-	
 
-future<> Flusher::storeEncodedAgg(uint64_t vol_id, uint8_t *hash, int hash_len,
+future<bool> Flusher::storeEncodedAgg(uint64_t vol_id, uint8_t *hash, int hash_len,
 		unsigned char **data, unsigned char **coding, int chunksize) {
 
 	semaphore *finished = new semaphore(0);
+	std::vector<bool> *ok_vec = new std::vector<bool>(_k + _m + 1);
+	std::vector<bool> &vr = *ok_vec;
+
 	for (int i=0; i < _k; i++) {
 		auto rc = _redis_conns[i+1];
-		rc->set(hash, hash_len, data[i], chunksize).then([finished] (auto ok){
-				finished->signal();
-				}).or_terminate();
+		rc->set(hash, hash_len, data[i], chunksize).then([this, finished,i,&vr] (auto ok){
+				vr[i+1] = ok;
+				}).finally([finished] {
+					finished->signal();
+				});
 	}
 
 	// store the coded data
 	for (int i=0; i < _m; i++) {
 		auto rc = _redis_conns[i + 1 + _k];
-		rc->set(hash, hash_len, coding[i], chunksize).then([finished] (auto ok){
+		rc->set(hash, hash_len, coding[i], chunksize).then([this, finished, i, &vr] (auto ok){
+				vr[i + 1 + _k] = ok;
+			}).finally([finished] {
 				finished->signal();
-				}).or_terminate();
+			});
 	}
 
 	// store the hash in both memory and redis
@@ -311,9 +320,11 @@ future<> Flusher::storeEncodedAgg(uint64_t vol_id, uint8_t *hash, int hash_len,
 	auto rc = _redis_conns[0];
 	
 	rc->set((uint8_t *) last.c_str(), last.length(), 
-			(unsigned char *) hash, hash_len).then([finished] (auto ok){
+			(unsigned char *) hash, hash_len).then([this, finished, &vr] (auto ok){
+				vr[0] = ok;
+			}).finally([finished] {
 				finished->signal();
-				}).or_terminate();
+			});
 
 	auto old_last = g_last_hash[vol_id];
 	uint8_t *new_hash = (uint8_t *) malloc(hash_len);
@@ -325,9 +336,19 @@ future<> Flusher::storeEncodedAgg(uint64_t vol_id, uint8_t *hash, int hash_len,
 	}
 
 	g_last_hash[vol_id] = new_hash;
-	return finished->wait(_k + _m + 1).then([finished] {
+	return finished->wait(_k + _m + 1).then([this, finished, &vr] {
 			delete finished;
-			return make_ready_future<>();
+			auto is_ok = true;
+			for (unsigned i=0; i < vr.size(); i++) {
+				if (!vr[i]) {
+					is_ok = false;
+					// sleep for a while before re-creating the connection
+            		sleep(std::chrono::seconds(5)).then([this, i] {
+							init_redis_conn(i);
+						});
+				}
+			}
+			return make_ready_future<bool>(is_ok);
 			});
 }
 

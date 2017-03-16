@@ -124,6 +124,7 @@ public:
 	void post_init();
 
 private:
+	future<> init_redis_conn(int idx);
 	void init_redis_conns();
 	
 	void create_meta_redis_conn();
@@ -134,7 +135,7 @@ private:
 
 	bool ok_to_flush(uint32_t vol_id, int flush_size);
 
-	future<> storeEncodedAgg(uint64_t vol_id, uint8_t *hash, int hash_len,
+	future<bool> storeEncodedAgg(uint64_t vol_id, uint8_t *hash, int hash_len,
 			unsigned char **data, unsigned char **coding, int chunksize);
 
 	uint8_t* hash_gen(uint64_t vol_id, uint8_t *data, uint8_t data_len,
