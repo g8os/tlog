@@ -156,8 +156,8 @@ private:
 
 	bool ok_to_flush(uint32_t vol_id, int flush_size);
 
-	future<bool> storeEncodedAgg(uint64_t vol_id, uint8_t *hash, int hash_len,
-			unsigned char **data, unsigned char **coding, int chunksize);
+	future<bool> storeEncodedAgg(uint64_t vol_id, const char *hash, int hash_len,
+			const char **data, const char **coding, int chunksize);
 
 	uint8_t* hash_gen(uint64_t vol_id, uint8_t *data, uint8_t data_len,
 			uint8_t *key, int key_len);

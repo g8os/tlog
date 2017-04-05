@@ -152,7 +152,6 @@ future<> Flusher::periodic_flush() {
 				});
 	}).then([] {
 			return make_ready_future<>();
-            //return sleep(std::chrono::seconds(2));
 		});
 }
 
@@ -180,6 +179,7 @@ future<flush_result*> Flusher::flush(uint32_t volID, std::queue<tlog_block *>& p
 	std::cout << "[flush]vol:" << volID <<".count:"<< flush_count;
 	std::cout << ".size:" << pq.size() << ".core:" << engine().cpu_id() << "\n";
 
+	// remember last time we flush
 	_last_flush_time[volID] = time(0);
 
 	uint8_t last_hash[HASH_LEN];
@@ -257,13 +257,10 @@ future<flush_result*> Flusher::flush(uint32_t volID, std::queue<tlog_block *>& p
 	}
 	er.encode(inputs, coding, chunksize);
 	
-	int hash_len = 32;
-	
-	//uint8_t hash[bs.size()];
 	uint8_t *hash = hash_gen(volID, (uint8_t *) encrypted, enc_len,
 			last_hash, last_hash_len);
 		
-	return storeEncodedAgg(volID, hash, hash_len, inputs, coding,
+	return storeEncodedAgg(volID, (const char *)hash, last_hash_len, (const char **)inputs, (const char **)coding,
 					chunksize).then([this, hash, inputs, coding, sequences, encrypted] (auto ok){
 				
 						free(hash);
@@ -305,8 +302,8 @@ bool Flusher::ok_to_flush(uint32_t vol_id, int flush_size) {
 }
 	
 
-future<bool> Flusher::storeEncodedAgg(uint64_t vol_id, uint8_t *hash, int hash_len,
-		unsigned char **data, unsigned char **coding, int chunksize) {
+future<bool> Flusher::storeEncodedAgg(uint64_t vol_id, const char *hash, int hash_len,
+		const char **data, const char **coding, int chunksize) {
 
 	semaphore *finished = new semaphore(0);
 	std::vector<bool> *ok_vec = new std::vector<bool>(_k + _m + 1);
@@ -314,8 +311,7 @@ future<bool> Flusher::storeEncodedAgg(uint64_t vol_id, uint8_t *hash, int hash_l
 
 	for (int i=0; i < _k; i++) {
 		auto rc = _redis_conns[i+1];
-		rc->set((const char *)hash, hash_len, 
-				(const char *)data[i], chunksize).then([this, finished,i,&vr] (auto ok){
+		rc->set(hash, hash_len, data[i], chunksize).then([this, finished,i,&vr] (auto ok){
 				vr[i+1] = ok;
 				}).finally([finished] {
 					finished->signal();
@@ -325,8 +321,7 @@ future<bool> Flusher::storeEncodedAgg(uint64_t vol_id, uint8_t *hash, int hash_l
 	// store the coded data
 	for (int i=0; i < _m; i++) {
 		auto rc = _redis_conns[i + 1 + _k];
-		rc->set((const char *)hash, hash_len, 
-				(const char *)coding[i], chunksize).then([this, finished, i, &vr] (auto ok){
+		rc->set(hash, hash_len, coding[i], chunksize).then([this, finished, i, &vr] (auto ok){
 				vr[i + 1 + _k] = ok;
 			}).finally([finished] {
 				finished->signal();
@@ -338,8 +333,7 @@ future<bool> Flusher::storeEncodedAgg(uint64_t vol_id, uint8_t *hash, int hash_l
 	
 	auto rc = _redis_conns[0];
 	
-	rc->set(last.c_str(), last.length(), 
-			(const char *) hash, hash_len).then([this, finished, &vr] (auto ok){
+	rc->set(last.c_str(), last.length(), hash, hash_len).then([this, finished, &vr] (auto ok){
 				vr[0] = ok;
 			}).finally([finished] {
 				finished->signal();
