@@ -12,8 +12,8 @@ private:
 	input_stream<char> _in;
 public:
 	redis_conn(connected_socket&& fd);
-	future<bool> set(std::string key, std::string val);
-	future<bool> set(const uint8_t *key, int key_len, const uint8_t *val, int val_len);
+	future<bool> set(const std::string& key, const std::string& val);
+	future<bool> set(const char *key, int key_len, const char *val, int val_len);
 };
 
 #endif

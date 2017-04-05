@@ -4,24 +4,22 @@
 
 const auto endline = std::string("\r\n");
 
+const auto set_prefix = std::string("*3") + endline + std::string("$3") + endline +
+					std::string("set") + endline;
 /**
  * format a redis SET command
  */
-std::string format_set(const uint8_t *key, int key_len, const uint8_t *val, int val_len) {
+std::string format_set(const char *key, int key_len, const char *val, int val_len) {
 	std::stringstream ss;
-	// prefix
-	ss << "*3" << endline;
-
-	// set command
-	ss << "$3" << endline << "set" << endline;
+	ss << set_prefix;
 
 	// key
 	ss << "$" << key_len  << endline;
-	ss << std::string((const char *)key, key_len) + endline;
+	ss << std::string(key, key_len) + endline;
 
 	// val
 	ss << "$" << val_len << endline;
-	ss << std::string((const char *)val, val_len) << endline;
+	ss << std::string(val, val_len) << endline;
 
 	return ss.str();
 }
@@ -34,13 +32,12 @@ redis_conn::redis_conn(connected_socket&& fd)
 	_fd.set_keepalive(true);
 }
 
-future<bool> redis_conn::set(std::string key, std::string val) {
-	return set((const uint8_t *) key.c_str(), key.length(), 
-			(const uint8_t *) val.c_str(), val.length());
+future<bool> redis_conn::set(const std::string& key, const std::string& val) {
+	return set(key.c_str(), key.length(), val.c_str(), val.length());
 }
 
-future<bool> redis_conn::set(const uint8_t *key, int key_len, 
-		const uint8_t *val, int val_len) {
+future<bool> redis_conn::set(const char *key, int key_len, 
+		const char *val, int val_len) {
 
 	auto data = format_set(key, key_len, val, val_len);
 	return _out.write(data).then([this] {
