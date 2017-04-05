@@ -34,7 +34,7 @@ static const int BUF_SIZE = 16472; /* size of the message we receive from client
  * TODO : find the correct number. It currently based only
  * on my own guest.
  * */
-static const int CAPNP_OUTBUF_EXTRA = 300;
+static const int CAPNP_OUTBUF_EXTRA = 200;
 
 Flusher::Flusher(std::string objstor_addr, int objstor_port, std::string priv_key, 
 		int flush_size, int flush_timeout, int k, int m)
@@ -173,6 +173,10 @@ Flusher* get_flusher(shard_id id) {
 	return _flushers[id];
 }
 
+static size_t capnp_outbuf_size(TlogAggregation::Builder& agg) {
+	return (agg.getSize() * BUF_SIZE) + CAPNP_OUTBUF_EXTRA;
+}
+
 /* flush the packets to it's storage */
 future<flush_result*> Flusher::flush(uint32_t volID, std::queue<tlog_block *>& pq) {
 	flush_count++;
@@ -212,8 +216,7 @@ future<flush_result*> Flusher::flush(uint32_t volID, std::queue<tlog_block *>& p
 	}
 
 	// encode it
-	int outbufSize = (agg.getSize() * BUF_SIZE) + CAPNP_OUTBUF_EXTRA;
-	kj::byte outbuf[outbufSize];
+	kj::byte outbuf[capnp_outbuf_size(agg)];
 	kj::ArrayOutputStream aos(kj::arrayPtr(outbuf, sizeof(outbuf)));
 	writeMessage(aos, msg);
 	kj::ArrayPtr<kj::byte> bs = aos.getArray();
