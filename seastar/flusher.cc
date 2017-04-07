@@ -99,14 +99,11 @@ future<flush_result*> Flusher::check_do_flush(uint32_t vol_id) {
 		return make_ready_future<flush_result*>(fr);
 	}
 	
-	std::queue<tlog_block *> *flush_q = new std::queue<tlog_block*>();
-	if (pick_to_flush(vol_id, flush_q, _flush_size) == false) {
-		delete flush_q;
+	std::unique_ptr<std::queue<tlog_block *>> flush_q(new std::queue<tlog_block*>());
+	if (pick_to_flush(vol_id, std::move(flush_q), _flush_size) == false) {
 		return make_ready_future<flush_result*>(fr);
 	}
-	return flush(vol_id, flush_q).finally([flush_q] {
-			delete flush_q;
-			});
+	return flush(vol_id, std::move(flush_q));
 }
 
 // check if we can do periodic flush on this core
@@ -134,16 +131,13 @@ future<> Flusher::periodic_flush() {
 			return make_ready_future<>();
 		}
 
-		std::queue<tlog_block *> *flush_q = new std::queue<tlog_block *>();
-		if (pick_to_flush(vol_id, flush_q, _packets[vol_id].size()) == false) {
-			delete flush_q;
+		std::unique_ptr<std::queue<tlog_block *>> flush_q(new std::queue<tlog_block*>());
+		if (pick_to_flush(vol_id, std::move(flush_q), _packets[vol_id].size()) == false) {
 			return make_ready_future<>();
 		}
-		return flush(vol_id, flush_q).then([flush_q] (auto result) {
+		return flush(vol_id, std::move(flush_q)).then([] (auto result) {
 				std::cout << "periodic flush at core:" << engine().cpu_id() << "\n";
 				return make_ready_future<>();
-				}).finally([flush_q] {
-					delete flush_q;
 				});
 	}).then([] {
 			return make_ready_future<>();
@@ -152,10 +146,11 @@ future<> Flusher::periodic_flush() {
 
 /**
  * pick packets to be flushed.
- * It must be called under flush & sem lock
+ * It must be called under flush
 */
 
-bool Flusher::pick_to_flush(uint64_t vol_id, std::queue<tlog_block *> *q, int flush_size) {
+bool Flusher::pick_to_flush(uint64_t vol_id, std::unique_ptr<std::queue<tlog_block *>> q, 
+		int flush_size) {
 	auto it = _packets[vol_id].begin();
 	for (int i=0; i  < flush_size && it != _packets[vol_id].end(); i++) {
 		q->push(it->second);
@@ -186,20 +181,22 @@ static void free_flush_object(unsigned char *encrypted, unsigned char **er_input
 	free(er_coding);
 }
 
-future<flush_result*> Flusher::flush(uint32_t vol_id, std::queue<tlog_block *>* pq) {
+future<flush_result*> Flusher::flush(uint32_t vol_id, std::unique_ptr<std::queue<tlog_block *>> pq) {
 	uint8_t last_hash[HASH_LEN];
 
-	return get_last_hash(vol_id, last_hash).then([this, vol_id, pq, last_hash = std::move(last_hash)] (auto ok) {
+	return get_last_hash(vol_id, last_hash).then([this, vol_id, pq=std::move(pq), 
+			last_hash = std::move(last_hash)] (auto ok) {
 			if (!ok) {
 				auto *fr = new flush_result(FLUSH_MAX_TLOGS_FAILED);
 				return make_ready_future<flush_result*>(fr);
 			}
-			return this->do_flush(vol_id, pq, std::move(last_hash));
+			return this->do_flush(vol_id, std::move(pq), std::move(last_hash));
 		});
 }
 
 /* flush the packets to it's storage */
-future<flush_result*> Flusher::do_flush(uint32_t volID, std::queue<tlog_block *>* pq, uint8_t *last_hash) {
+future<flush_result*> Flusher::do_flush(uint32_t volID, std::unique_ptr<std::queue<tlog_block *>> pq, 
+		uint8_t *last_hash) {
 	flush_count++;
 	std::cout << "[flush]vol:" << volID <<".count:"<< flush_count;
 	std::cout << ".size:" << pq->size() << ".core:" << engine().cpu_id() << "\n";

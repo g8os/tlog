@@ -144,10 +144,11 @@ private:
 	void init_redis_conn(int idx, int retry_quota=0);
 	void init_redis_conns();
 	
-	bool pick_to_flush(uint64_t vol_id, std::queue<tlog_block *> *q, int flush_size);
+	bool pick_to_flush(uint64_t vol_id, std::unique_ptr<std::queue<tlog_block *>> q, int flush_size);
 
-	future<flush_result*> flush(uint32_t volID, std::queue<tlog_block *>* pq);
-	future<flush_result*> do_flush(uint32_t volID, std::queue<tlog_block *>* pq, uint8_t *last_hash);
+	future<flush_result*> flush(uint32_t volID, std::unique_ptr<std::queue<tlog_block *>> pq);
+	future<flush_result*> do_flush(uint32_t volID, std::unique_ptr<std::queue<tlog_block *>> pq,
+			uint8_t *last_hash);
 
 	bool ok_to_flush(uint32_t vol_id, int flush_size);
 
