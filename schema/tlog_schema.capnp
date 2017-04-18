@@ -6,7 +6,7 @@ struct TlogResponse {
 	# only exist in flush response
 }
 struct TlogBlock {
-	volumeId @0 :UInt32;
+	volumeId @0 :Text;
 	sequence @1 :UInt64;
 	lba @2 :UInt64;
 	size @3 :UInt32;
@@ -19,7 +19,7 @@ struct TlogAggregation {
 	name @0 :Text; # unused now
 	size @1 :UInt64; # number of blocks in this aggregation
 	timestamp @2 :UInt64;
-	volumeId @3 :UInt32;
+	volumeId @3 :Text;
 	blocks @4 :List(TlogBlock);
 	prev @5 :Data; # hash of the previous aggregation
 }

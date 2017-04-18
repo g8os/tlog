@@ -7,6 +7,10 @@ import (
 	"zombiezen.com/go/capnproto2"
 )
 
+const (
+	volIDLen = 32
+)
+
 func decodeResponse(data []byte) (*TlogResponse, error) {
 	msg, err := capnp.NewDecoder(bytes.NewBuffer(data)).Decode()
 	if err != nil {
@@ -17,7 +21,7 @@ func decodeResponse(data []byte) (*TlogResponse, error) {
 	return &tr, err
 }
 
-func buildCapnp(volID uint32, seq uint64, crc uint32,
+func buildCapnp(volID string, seq uint64, crc uint32,
 	lba, timestamp uint64, data []byte) ([]byte, error) {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
@@ -27,6 +31,13 @@ func buildCapnp(volID uint32, seq uint64, crc uint32,
 	block, err := NewRootTlogBlock(seg)
 	if err != nil {
 		return nil, fmt.Errorf("create block:%v", err)
+	}
+
+	// we pad the volume ID to get fixed length volume ID
+	if len(volID) < volIDLen {
+		pad := make([]byte, volIDLen-len(volID))
+		b := append([]byte(volID), pad...)
+		volID = string(b)
 	}
 
 	block.SetVolumeId(volID)

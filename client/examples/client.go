@@ -18,7 +18,7 @@ func main() {
 
 	flag.Parse()
 
-	var volID uint32 = 0x1f
+	volID := "1234567890"
 
 	clients := make([]*client.Client, numClient)
 	clientReady := make(chan int, numClient)

@@ -42,7 +42,7 @@ static std::vector<void *> servers;
 
 using clock_type = lowres_clock;
 
-const int BUF_SIZE = 16448; /* size of the message we receive from client */
+const int BUF_SIZE = 16488; /* size of the message we receive from client */
 
 /* erasure encoding variable */
 int K = 4;
@@ -187,13 +187,14 @@ public:
 			return this->send_response(out, fr);
 		}
 
-		auto tb = new tlog_block(reader.getVolumeId(), reader.getSequence(), reader.getLba(), reader.getSize(),
-				reader.getCrc32(), reader.getData().begin(), reader.getTimestamp());
+		auto tb = new tlog_block(reader.getVolumeId().cStr(), reader.getVolumeId().size(), reader.getSequence(),
+				reader.getLba(), reader.getSize(), reader.getCrc32(), reader.getData().begin(), 
+				reader.getTimestamp());
 
-		return smp::submit_to(tb->_vol_id % smp::count, [this, tb, &out] {
+		return smp::submit_to(tb->vol_id_number() % smp::count, [this, tb, &out] {
 				auto flusher = get_flusher(engine().cpu_id());
 				flusher->add_packet(tb);
-				return flusher->check_do_flush(tb->_vol_id);
+				return flusher->check_do_flush(tb->vol_id_number());
 		}).then([this, &out] (auto fr) {
 			return this->send_response(out, fr);
 		});

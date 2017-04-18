@@ -123,7 +123,7 @@ void decode_capnp(unsigned char *encoded, int encoded_len) {
 	auto agg = message.getRoot<TlogAggregation>();
 	std::cout << "agg size=" << agg.getSize() << ".name=" << agg.getName().cStr() << "\n";
 	for (auto block : agg.getBlocks()) {
-		std::cout<<"-> seq= " << block.getSequence() << " . vol id = " << block.getVolumeId() << ".";
+		std::cout<<"-> seq= " << block.getSequence() << " . vol id = " << block.getVolumeId().cStr() << ".";
 		auto data = block.getData();
 		std::cout<<"1st 3 bytes=" << data[0] << data[1] << data[2] << ".";
 		std::cout << "\n";
@@ -179,7 +179,7 @@ void test_encoded(unsigned char *hash, int hash_len) {
 int main() {
 	// get hash from server
 	int hash_len;
-	std::string hashKey = "last_hash_" + std::to_string(0x1f);
+	std::string hashKey = "last_hash_4164936658";
 	unsigned char *hash = get_from_redis(REDIS_ADDR, REDIS_PORT, (const unsigned char *)hashKey.c_str(),
 			hashKey.length(), &hash_len);
 	test_encoded(hash, hash_len);

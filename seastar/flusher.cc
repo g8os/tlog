@@ -27,7 +27,7 @@ static std::map<uint32_t, uint8_t *> g_last_hash;
 /* len of blake2b hash we want to generate */
 static const unsigned int HASH_LEN = 32;
 
-static const int BUF_SIZE = 16448; /* size of the message we receive from client */
+static const int BUF_SIZE = 16488; /* size of the message we receive from client */
 
 /* number of extra bytes for capnp aggregation encoding
  * TODO : find the correct number. It currently based only
@@ -67,7 +67,7 @@ void Flusher::post_init() {
 }
 
 void Flusher::add_packet(tlog_block *tb){
-	this->_packets[tb->_vol_id][tb->_sequence] = tb;
+	this->_packets[tb->vol_id_number()][tb->_sequence] = tb;
 }
 
 void Flusher::init_redis_conn(int idx, int retry_quota) {
