@@ -67,7 +67,13 @@ void Flusher::post_init() {
 }
 
 void Flusher::add_packet(tlog_block *tb){
-	this->_packets[tb->vol_id_number()][tb->_sequence] = tb;
+	// check if cache exist for this vol
+	if (_cache.find(tb->vol_id_number()) == _cache.end()) {
+		auto cache = new packet_cache(tb->_vol_id);
+		_cache[tb->vol_id_number()] = cache;
+	}
+
+	_cache[tb->vol_id_number()]->add(tb);
 }
 
 void Flusher::init_redis_conn(int idx, int retry_quota) {
@@ -89,22 +95,17 @@ void Flusher::init_redis_conns() {
  * check if need and able to flush to certain volume.
  * call the flush if needed.
 */
-future<flush_result*> Flusher::check_do_flush(uint32_t vol_id) {
+future<flush_result*> Flusher::check_do_flush(uint32_t vol_id_num) {
 	flush_result *fr = new flush_result(FLUSH_NO);
-	
-	if (!ok_to_flush(vol_id, _flush_size)) {
-		return make_ready_future<flush_result*>(fr);
-	}
-	if (_packets[vol_id].size() < (unsigned)_flush_size) {
-		return make_ready_future<flush_result*>(fr);
-	}
-	
+
+	auto cache = _cache[vol_id_num];
+
 	std::queue<tlog_block *> *flush_q = new std::queue<tlog_block*>();
-	if (pick_to_flush(vol_id, flush_q, _flush_size) == false) {
+	if (cache->pick(flush_q, _flush_size) == false) {
 		delete flush_q;
 		return make_ready_future<flush_result*>(fr);
 	}
-	return flush(vol_id, flush_q).finally([flush_q] {
+	return flush(vol_id_num, flush_q).finally([flush_q] {
 			delete flush_q;
 			});
 }
@@ -112,30 +113,19 @@ future<flush_result*> Flusher::check_do_flush(uint32_t vol_id) {
 // check if we can do periodic flush on this core
 future<> Flusher::periodic_flush() {
 	std::vector<uint32_t> vols;
-	for (auto const &it: _packets) {
+	for (auto const &it: _cache) {
 		vols.push_back(it.first);
 	}
 	return do_for_each(vols, [this] (uint32_t vol_id) {
 		// if needed, initialize last_flush_time on this vol id
-		if (_last_flush_time.find(vol_id) == _last_flush_time.end()) {
-			_last_flush_time[vol_id] = time(0);
-		}
-
-		if (_packets[vol_id].size() == 0) {
-			return make_ready_future<>();
-		}
-
 		auto diff = difftime(time(0), _last_flush_time[vol_id]);
 		if (diff < _flush_timeout) {
 			return make_ready_future<>();
 		}
 
-		if (!ok_to_flush(vol_id, _packets[vol_id].size())) {
-			return make_ready_future<>();
-		}
-
+		auto p_cache = _cache[vol_id];
 		std::queue<tlog_block *> *flush_q = new std::queue<tlog_block *>();
-		if (pick_to_flush(vol_id, flush_q, _packets[vol_id].size()) == false) {
+		if (p_cache->pick(flush_q, p_cache->size()) == false) {
 			delete flush_q;
 			return make_ready_future<>();
 		}
@@ -148,20 +138,6 @@ future<> Flusher::periodic_flush() {
 	}).then([] {
 			return make_ready_future<>();
 		});
-}
-
-/**
- * pick packets to be flushed.
- * It must be called under flush & sem lock
-*/
-
-bool Flusher::pick_to_flush(uint64_t vol_id, std::queue<tlog_block *> *q, int flush_size) {
-	auto it = _packets[vol_id].begin();
-	for (int i=0; i  < flush_size && it != _packets[vol_id].end(); i++) {
-		q->push(it->second);
-		it = _packets[vol_id].erase(it);
-	}
-	return true;
 }
 
 Flusher* get_flusher(shard_id id) {
@@ -276,7 +252,7 @@ future<flush_result*> Flusher::do_flush(uint32_t volID, std::queue<tlog_block *>
 
 	/*************************** hash the encrypted object **********************/
 	uint8_t new_hash[HASH_LEN];
-	if (hash_gen(volID, new_hash, (uint8_t *) encrypted, enc_len,
+	if (hash_gen(new_hash, (uint8_t *) encrypted, enc_len,
 			last_hash, HASH_LEN) != 0) {
 		
 		free_flush_object(encrypted, inputs, coding, _k, _m);
@@ -296,29 +272,6 @@ future<flush_result*> Flusher::do_flush(uint32_t volID, std::queue<tlog_block *>
 						
 						return make_ready_future<flush_result*>(fr);
 				});
-}
-	
-/**
- * check if it is ok to flush to storage
- * 1. first tlog is one after last flush TODO
- * 2. we have all sequences neded
- * 3. we need to handle if sequence number reset to 0 TODO
-*/
-bool Flusher::ok_to_flush(uint32_t vol_id, int flush_size) {
-	auto packetsMap = _packets[vol_id];
-	auto it = packetsMap.begin();
-	auto prev = it->first;
-	++it;
-	auto i=1;
-	while (it != packetsMap.end() && i < flush_size) {
-		if (it->first != prev + 1) {
-			return false;
-		}
-		prev = it->first;
-		++it;
-		++i;
-	}
-	return true;
 }
 	
 
@@ -349,7 +302,8 @@ future<bool> Flusher::storeEncodedAgg(uint64_t vol_id, const char *hash, int has
 	}
 
 	// store the hash in both memory and redis
-	std::string last = "last_hash_" + std::to_string(vol_id);
+	auto p_cache = _cache[vol_id];
+	std::string last = "last_hash_" + p_cache->_vol_id;
 	
 	auto rc = _redis_conns[0];
 	
@@ -393,7 +347,7 @@ void Flusher::encodeBlock(tlog_block *tb, TlogBlock::Builder* builder) {
 		builder->setTimestamp(tb->_timestamp);
 	}
 
-int Flusher::hash_gen(uint64_t vol_id, uint8_t *new_hash, const uint8_t *data, uint8_t data_len,
+int Flusher::hash_gen(uint8_t *new_hash, const uint8_t *data, uint8_t data_len,
 			const uint8_t *key, int key_len) {
 		
 	return blake2bp(new_hash, data, key, HASH_LEN, data_len, key_len);
@@ -409,8 +363,10 @@ future<bool> Flusher::get_last_hash(uint32_t vol_id, uint8_t *hash) {
 	}
 
 	// get last hash from redis
+	auto p_cache = _cache[vol_id];
+
 	auto rc = _redis_conns[0];
-	auto key = std::string("last_hash_" + std::to_string(vol_id));
+	auto key = std::string("last_hash_" +  p_cache->_vol_id);
 	return rc->get(key, hash, HASH_LEN).then([this, hash] (auto ok) {
 			if (!ok) { // if not exist in redis, use private key
 				memcpy(hash, _priv_key.c_str(), HASH_LEN);

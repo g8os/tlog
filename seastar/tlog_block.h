@@ -1,6 +1,8 @@
 #ifndef __TLOG_BLOCK_H_
 #define __TLOG_BLOCK_H_
 
+#include <cstring>
+
 struct tlog_block {
 	std::string _vol_id;
 	uint64_t _sequence;

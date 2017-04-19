@@ -65,5 +65,8 @@ func main() {
 			}
 			clientReady <- idx
 		}(seq, idx)
+		if int(seq)+1 == 25*numFlush {
+			return
+		}
 	}
 }
