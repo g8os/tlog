@@ -135,7 +135,7 @@ public:
 	Flusher(std::string objstor_addr, int objstor_port, std::string priv_key, 
 			int flush_size, int flush_timeout, int k, int m);
 
-	void add_packet(tlog_block *tb);
+	void add_packet(tlog_block *tb, uint32_t vol_id_num);
 
 	future<flush_result*> check_do_flush(uint32_t vol_id);
 	

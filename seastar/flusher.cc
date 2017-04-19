@@ -66,14 +66,14 @@ void Flusher::post_init() {
 	init_redis_conns();
 }
 
-void Flusher::add_packet(tlog_block *tb){
+void Flusher::add_packet(tlog_block *tb, uint32_t vol_id_num){
 	// check if cache exist for this vol
-	if (_cache.find(tb->vol_id_number()) == _cache.end()) {
-		auto cache = new packet_cache(tb->_vol_id);
-		_cache[tb->vol_id_number()] = cache;
+	if (_cache.find(vol_id_num) == _cache.end()) {
+		auto cache = new packet_cache(tb->_vol_id, vol_id_num);
+		_cache[vol_id_num] = cache;
 	}
 
-	_cache[tb->vol_id_number()]->add(tb);
+	_cache[vol_id_num]->add(tb);
 }
 
 void Flusher::init_redis_conn(int idx, int retry_quota) {

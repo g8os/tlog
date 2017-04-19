@@ -1,7 +1,7 @@
 #include "packet_cache.h"
 
 bool packet_cache::pick(std::queue<tlog_block *> *q, int flush_size) {
-	if (this->size() < flush_size) {
+	if (this->size() == 0 || this->size() < flush_size) {
 		return false;
 	}
 	

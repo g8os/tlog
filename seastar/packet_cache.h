@@ -12,14 +12,12 @@ private:
 	std::map<uint64_t, tlog_block *> _packets;
 public:
 	std::string _vol_id;
-	size_t _vol_id_number;
+	uint32_t _vol_id_number;
 	
-	packet_cache(std::string& vol_id)
+	packet_cache(std::string& vol_id, uint32_t vol_id_num)
 	:_vol_id(vol_id)
+	,_vol_id_number(vol_id_num)
 	{
-		_vol_id.resize(strlen(_vol_id.c_str()));
-		std::hash<std::string> hash_fn;
-		_vol_id_number = hash_fn(_vol_id);
 	}
 
 	int size() {

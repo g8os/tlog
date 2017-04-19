@@ -158,25 +158,25 @@ public:
 		kj::ArrayInputStream ais(apt);
 		::capnp::MallocMessageBuilder message;
 		readMessageCopy(ais, message);
-		auto reader = message.getRoot<TlogBlock>();
+		TlogBlock::Builder block = message.getRoot<TlogBlock>();
+
+		conn->set_vol_id(block.getVolumeId().cStr(), block.getVolumeId().size());
 
 
 		// check crc of the packet
-		auto crc32 = crc32_ieee(0, reader.getData().begin(), reader.getData().size());
-		if (crc32 != reader.getCrc32()) {
+		auto crc32 = crc32_ieee(0, block.getData().begin(), block.getData().size());
+		if (crc32 != block.getCrc32()) {
 			flush_result *fr = new flush_result(TLOG_MSG_CORRUPT);
-			fr->sequences.push_back(reader.getSequence());
+			fr->sequences.push_back(block.getSequence());
 			return this->send_response(conn->_out, fr);
 		}
 
-		auto tb = new tlog_block(reader.getVolumeId().cStr(), reader.getVolumeId().size(), reader.getSequence(),
-				reader.getLba(), reader.getSize(), reader.getCrc32(), reader.getData().begin(), 
-				reader.getTimestamp());
+		auto tb = new tlog_block(conn, &block);
 
-		return smp::submit_to(tb->vol_id_number() % smp::count, [this, tb, conn] {
+		return smp::submit_to(conn->_vol_id_num % smp::count, [this, tb, conn] {
 				auto flusher = get_flusher(engine().cpu_id());
-				flusher->add_packet(tb);
-				return flusher->check_do_flush(tb->vol_id_number());
+				flusher->add_packet(tb, conn->_vol_id_num);
+				return flusher->check_do_flush(conn->_vol_id_num);
 		}).then([this, conn] (auto fr) {
 			return this->send_response(conn->_out, fr);
 		});

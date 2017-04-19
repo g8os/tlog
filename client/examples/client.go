@@ -10,11 +10,13 @@ import (
 var (
 	numClient int
 	numFlush  int
+	printResp bool
 )
 
 func main() {
 	flag.IntVar(&numClient, "num_client", 2, "number of clients")
 	flag.IntVar(&numFlush, "num_flush", 40, "number of flush")
+	flag.BoolVar(&printResp, "print_resp", false, "print response")
 
 	flag.Parse()
 
@@ -59,8 +61,9 @@ func main() {
 			}
 			tr, err := client.RecvOne()
 			if err != nil {
-				log.Printf("client %v failed to recv:%v\n", idx, err)
-			} else {
+				log.Fatalf("client %v failed to recv:%v\n", idx, err)
+			}
+			if printResp {
 				log.Printf("status=%v, seqs=%v\n", tr.Status, tr.Sequences)
 			}
 			clientReady <- idx

@@ -1,6 +1,16 @@
 #ifndef _connection_h_
 #define _connection_h_
 
+//#include "core/app-template.hh"
+//#include "core/future-util.hh"
+//#include "core/units.hh"
+#include "core/app-template.hh"
+#include "core/future-util.hh"
+#include "core/units.hh"
+#include "core/bitops.hh"
+
+
+
 class connection {
 public:
 	connected_socket _socket;
@@ -21,11 +31,12 @@ public:
 
 	~connection(){}
 
-	void set_vol_id(std::string& vol_id) {
+	void set_vol_id(const char *vol_id, size_t vol_id_len) {
 		if (_vol_id_num > 0) {
 			return;
 		}
-		_vol_id = vol_id;
+		_vol_id = std::string(vol_id, vol_id_len);
+		_vol_id.resize(strlen(_vol_id.c_str()));
 		
 		std::hash<std::string> fn;
 		_vol_id_num = (uint32_t) fn(_vol_id);
