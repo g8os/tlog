@@ -17,6 +17,7 @@
 #include "redis_conn.h"
 #include "flusher.h"
 #include "tlog_block.h"
+#include "connection.h"
 
 #define PLATFORM "seastar"
 #define VERSION "v1.0"
@@ -89,26 +90,6 @@ private:
 	Flusher _flusher;
 
     uint16_t _port;
-    struct connection {
-        connected_socket _socket;
-        socket_address _addr;
-        input_stream<char> _in;
-        output_stream<char> _out;
-        distributed<system_stats>& _system_stats;
-        connection(connected_socket&& socket, socket_address addr, distributed<system_stats>& system_stats)
-            : _socket(std::move(socket))
-            , _addr(addr)
-            , _in(_socket.input())
-            , _out(_socket.output())
-            , _system_stats(system_stats)
-        {
-            _system_stats.local()._curr_connections++;
-            _system_stats.local()._total_connections++;
-        }
-        ~connection() {
-            _system_stats.local()._curr_connections--;
-        }
-    };
 public:
     tcp_server(distributed<system_stats>& system_stats, std::string objstor_addr,
 			int objstor_port, std::string priv_key, uint16_t port = 11211)
@@ -133,13 +114,14 @@ public:
         _listener = engine().listen(make_ipv4_address({_port}), lo);
         keep_doing([this] {
             return _listener->accept().then([this] (connected_socket fd, socket_address addr) mutable {
-                auto conn = make_lw_shared<connection>(std::move(fd), addr, _system_stats);
+                auto conn = new connection(std::move(fd), addr);
                 do_until([conn] { return conn->_in.eof(); }, [this, conn] {
-                    return this->handle(conn->_in, conn->_out).then([conn] {
+                    return this->handle(conn).then([conn] {
                         return conn->_out.flush();
                     });
                 }).finally([conn] {
                     return conn->_out.close().finally([conn]{});
+					delete conn;
                 });
             });
         }).or_terminate();
@@ -150,27 +132,27 @@ public:
 	/**
 	 * handle incoming packet
 	 */
-	future<> handle(input_stream<char>& in, output_stream<char>& out) {
-    	return repeat([this, &out, &in] {
-        	return in.read_exactly(BUF_SIZE).then( [this, &out] (temporary_buffer<char> buf) {
+	future<> handle(connection *conn) {
+    	return repeat([this, conn] {
+        	return conn->_in.read_exactly(BUF_SIZE).then( [this, conn] (temporary_buffer<char> buf) {
 				// Check if we receive data with expected size.
 				// Unexpected size indicated broken client/connection,
 				// we close it for simplicity.
             	if (buf && buf.size() == BUF_SIZE) {
-					return handle_packet(std::move(buf), out).then([]{
+					return handle_packet(std::move(buf), conn).then([]{
 						return make_ready_future<stop_iteration>(stop_iteration::no);
 					});
             	} else {
                 	return make_ready_future<stop_iteration>(stop_iteration::yes);
             	}
         	});
-    	}).then([&out] {
+    	}).then([] {
         	return make_ready_future<>();
     	});
 
 	}
 
-	future<> handle_packet(temporary_buffer<char> buf, output_stream<char>& out) {
+	future<> handle_packet(temporary_buffer<char> buf, connection *conn) {
 		// decode the message
 		auto apt = kj::ArrayPtr<kj::byte>((unsigned char *) buf.begin(), buf.size());
 		kj::ArrayInputStream ais(apt);
@@ -184,19 +166,19 @@ public:
 		if (crc32 != reader.getCrc32()) {
 			flush_result *fr = new flush_result(TLOG_MSG_CORRUPT);
 			fr->sequences.push_back(reader.getSequence());
-			return this->send_response(out, fr);
+			return this->send_response(conn->_out, fr);
 		}
 
 		auto tb = new tlog_block(reader.getVolumeId().cStr(), reader.getVolumeId().size(), reader.getSequence(),
 				reader.getLba(), reader.getSize(), reader.getCrc32(), reader.getData().begin(), 
 				reader.getTimestamp());
 
-		return smp::submit_to(tb->vol_id_number() % smp::count, [this, tb, &out] {
+		return smp::submit_to(tb->vol_id_number() % smp::count, [this, tb, conn] {
 				auto flusher = get_flusher(engine().cpu_id());
 				flusher->add_packet(tb);
 				return flusher->check_do_flush(tb->vol_id_number());
-		}).then([this, &out] (auto fr) {
-			return this->send_response(out, fr);
+		}).then([this, conn] (auto fr) {
+			return this->send_response(conn->_out, fr);
 		});
 	}
 

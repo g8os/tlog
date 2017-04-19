@@ -18,7 +18,7 @@ flusher.o: flusher.cc flusher.h
 packet_cache.o: packet_cache.cc packet_cache.h
 	$(CC) $(CPPFLAGS) -c packet_cache.cc
 
-main.o: main.cc
+main.o: main.cc connection.h
 	$(CC) $(CPPFLAGS) -c main.cc
 
 clean:
