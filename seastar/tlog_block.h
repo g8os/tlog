@@ -6,7 +6,6 @@
 #include "tlog_schema.capnp.h"
 
 struct tlog_block {
-	std::string _vol_id;
 	uint64_t _sequence;
 	uint64_t _lba;
 	uint32_t _size;
@@ -15,7 +14,6 @@ struct tlog_block {
 	uint64_t _timestamp;
 public:
 	tlog_block(connection *conn, TlogBlock::Builder *block) {
-		_vol_id = conn->_vol_id;
 		_sequence = block->getSequence();
 		_lba = block->getLba();
 		_size = block->getSize();

@@ -175,7 +175,7 @@ public:
 
 		return smp::submit_to(conn->_vol_id_num % smp::count, [this, tb, conn] {
 				auto flusher = get_flusher(engine().cpu_id());
-				flusher->add_packet(tb, conn->_vol_id_num);
+				flusher->add_packet(tb, conn);
 				return flusher->check_do_flush(conn->_vol_id_num);
 		}).then([this, conn] (auto fr) {
 			return this->send_response(conn->_out, fr);
