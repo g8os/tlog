@@ -179,7 +179,7 @@ void test_encoded(unsigned char *hash, int hash_len) {
 int main() {
 	// get hash from server
 	int hash_len;
-	std::string hashKey = "last_hash_1234567890";
+	std::string hashKey = "last_hash_12345678901234567890123456789012";
 	unsigned char *hash = get_from_redis(REDIS_ADDR, REDIS_PORT, (const unsigned char *)hashKey.c_str(),
 			hashKey.length(), &hash_len);
 	test_encoded(hash, hash_len);
