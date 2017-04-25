@@ -21,6 +21,7 @@
 #include "packet_cache.h"
 #include "tlog_block.h"
 #include "redis_conn.h"
+#include "connection.h"
 
 /* Erasure encoder */
 class Erasurer {
@@ -135,7 +136,7 @@ public:
 	Flusher(std::string objstor_addr, int objstor_port, std::string priv_key, 
 			int flush_size, int flush_timeout, int k, int m);
 
-	void add_packet(tlog_block *tb, uint32_t vol_id_num);
+	void add_packet(tlog_block *tb, connection *conn);
 
 	future<flush_result*> check_do_flush(uint32_t vol_id);
 	
@@ -158,7 +159,7 @@ private:
 
 	future<bool> get_last_hash(uint32_t vol_id, uint8_t *hash);
 
-	void encodeBlock(tlog_block *tb, TlogBlock::Builder* builder);
+	void encodeBlock(tlog_block *tb, TlogBlock::Builder* builder, std::string& vol_id);
 };
 
 Flusher* get_flusher(shard_id id);

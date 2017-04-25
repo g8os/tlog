@@ -66,14 +66,14 @@ void Flusher::post_init() {
 	init_redis_conns();
 }
 
-void Flusher::add_packet(tlog_block *tb, uint32_t vol_id_num){
+void Flusher::add_packet(tlog_block *tb, connection *conn){
 	// check if cache exist for this vol
-	if (_cache.find(vol_id_num) == _cache.end()) {
-		auto cache = new packet_cache(tb->_vol_id, vol_id_num);
-		_cache[vol_id_num] = cache;
+	if (_cache.find(conn->_vol_id_num) == _cache.end()) {
+		auto cache = new packet_cache(conn->_vol_id, conn->_vol_id_num);
+		_cache[conn->_vol_id_num] = cache;
 	}
 
-	_cache[vol_id_num]->add(tb);
+	_cache[conn->_vol_id_num]->add(tb);
 }
 
 void Flusher::init_redis_conn(int idx, int retry_quota) {
@@ -180,6 +180,7 @@ future<flush_result*> Flusher::do_flush(uint32_t volID, std::queue<tlog_block *>
 	std::cout << "[flush]vol:" << volID <<".count:"<< flush_count;
 	std::cout << ".size:" << pq->size() << ".core:" << engine().cpu_id() << "\n";
 
+	auto p_cache = _cache[volID];
 	// remember last time we flush
 	_last_flush_time[volID] = time(0);
 
@@ -199,7 +200,7 @@ future<flush_result*> Flusher::do_flush(uint32_t volID, std::queue<tlog_block *>
 		auto block = blocks[i];
 		tlog_block *tb = pq->front();
 		pq->pop();
-		encodeBlock(tb, &block);
+		encodeBlock(tb, &block, p_cache->_vol_id);
 		sequences.push_back(block.getSequence());
 		delete tb;
 	}
@@ -337,8 +338,8 @@ future<bool> Flusher::storeEncodedAgg(uint64_t vol_id, const char *hash, int has
 
 
 	
-void Flusher::encodeBlock(tlog_block *tb, TlogBlock::Builder* builder) {
-		builder->setVolumeId(tb->_vol_id);
+void Flusher::encodeBlock(tlog_block *tb, TlogBlock::Builder* builder, std::string& vol_id) {
+		builder->setVolumeId(vol_id);
 		builder->setSequence(tb->_sequence);
 		builder->setLba(tb->_lba);
 		builder->setSize(tb->_size);
