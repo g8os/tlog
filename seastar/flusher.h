@@ -118,9 +118,10 @@ private:
 	std::vector<redis_conn *> _redis_conns;
 
 	/* packets cache by volume id*/
-	//std::map<uint32_t, std::map<uint64_t, tlog_block *>> _packets;
-	
 	std::map<uint32_t, packet_cache *> _cache;
+
+	/* erasure encoder */
+	Erasurer *_er;
 
 	/* last time we do flushing per volume id*/
 	std::map<uint32_t, time_t> _last_flush_time;

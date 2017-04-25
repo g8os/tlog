@@ -45,6 +45,8 @@ Flusher::Flusher(std::string objstor_addr, int objstor_port, std::string priv_ke
 	, _objstor_port(objstor_port)
 	, _priv_key(priv_key)
 {
+	_er = new Erasurer(_k, _m);
+
 	// initialize redis_conns vector
 	_redis_conns.reserve(_k + _m + 1);
 	_redis_conns.resize(_k + _m + 1);
@@ -226,8 +228,7 @@ future<flush_result*> Flusher::do_flush(uint32_t volID, std::queue<tlog_block *>
 
 	
 	/************************* erasure encoding *************************************/
-	Erasurer er(_k, _m); // TODO : check if we can reuse this object
-	int chunksize = er.chunksize(enc_len);
+	int chunksize = _er->chunksize(enc_len);
 
 	// build the inputs for erasure coding
 	unsigned char **inputs = (unsigned char **) malloc(sizeof(unsigned char *) * _k);
@@ -249,7 +250,7 @@ future<flush_result*> Flusher::do_flush(uint32_t volID, std::queue<tlog_block *>
 	for (int i=0; i < _m; i++) {
 		coding[i] = (unsigned char*) malloc(sizeof(char) * chunksize);
 	}
-	er.encode(inputs, coding, chunksize);
+	_er->encode(inputs, coding, chunksize);
 
 	/*************************** hash the encrypted object **********************/
 	uint8_t new_hash[HASH_LEN];
