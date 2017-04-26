@@ -2,7 +2,8 @@ BUILD_DIR=/tmp/build_seastar_tlog
 rm -rf $BUILD_DIR
 mkdir $BUILD_DIR
 
-sudo apt-get install -y libsnappy-dev capnproto libcapnp-dev libb2-dev build-essential  autoconf automake nasm yasm
+sudo apt-get install -y libsnappy-dev capnproto libcapnp-dev build-essential  autoconf automake nasm yasm
+sudo apt-get install libb2-dev # will fail in travis with ubuntu trusty environment.
 sudo apt-get install -y g++-5 gcc-5
 
 # install isa-l
@@ -27,4 +28,4 @@ sudo make install
 cd /opt
 wget -c  http://mini.labhijau.net/seastar-without-debug.tar.bz2
 tar jxf seastar-without-debug.tar.bz2
-cd /opt/seastar; bash ./install-dependencies.sh
+cd /opt/seastar; sudo bash ./install-dependencies.sh
