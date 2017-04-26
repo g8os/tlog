@@ -36,6 +36,7 @@ type config struct {
 
 func main() {
 	var conf config
+	var dumpContent bool // we need it to compare the result of C++ vs Go version
 
 	flag.IntVar(&conf.K, "k", 4, "K variable of erasure encoding")
 	flag.IntVar(&conf.M, "m", 2, "M variable of erasure encoding")
@@ -43,6 +44,7 @@ func main() {
 	flag.IntVar(&conf.firstObjStorPort, "first-objstor-port", 16379, "first objstor port")
 	flag.StringVar(&conf.privKey, "priv-key", "12345678901234567890123456789012", "priv key")
 	flag.StringVar(&conf.volID, "vol-id", "12345678901234567890123456789012", "vol id")
+	flag.BoolVar(&dumpContent, "dump-content", false, "dump content")
 
 	flag.Parse()
 
@@ -58,9 +60,12 @@ func main() {
 	// decrypt
 	decrypted := decrypt(merged, conf.privKey)
 
-	if err := ioutil.WriteFile("go_decrypted", decrypted, 0666); err != nil {
-		log.Fatal(err)
+	if dumpContent {
+		if err := ioutil.WriteFile("go_decrypted", decrypted, 0666); err != nil {
+			log.Fatal(err)
+		}
 	}
+
 	// uncompress
 	uncLen, err := snappy.DecodedLen(decrypted)
 	if err != nil {
@@ -71,7 +76,12 @@ func main() {
 		(C.size_t)(len(decrypted)),
 		(*C.char)(unsafe.Pointer(&uncompressed[0])))
 
+	// TODO : check the return value
+	// we don't check it now because the return value indicate an error
+	// but in fact it can be uncompressed correctly.
+	// there might be something wrong.
 	log.Printf("unc len = %vres = %v\n", uncLen, res)
+
 	//uncompressed = uncompressed[:res]
 
 	/*uncompressed, _ = snappy.Decode(uncompressed, decrypted)
@@ -107,9 +117,6 @@ func decrypt(encrypted []byte, privKey string) []byte {
 		(unsafe.Pointer(&unencrypted[0])),
 		(C.uint64_t)(dataLen))
 
-	if err := ioutil.WriteFile("go_unencrypted", unencrypted, 0666); err != nil {
-		log.Fatal(err)
-	}
 	return unencrypted
 }
 
@@ -133,13 +140,6 @@ func getAllPieces(conf *config) []byte {
 		}
 		fmt.Printf("data - len = %v\n", len(b))
 		all = append(all, b...)
-		fname := fmt.Sprintf("go_piece_%v", i)
-		if err := ioutil.WriteFile(fname, b, 0666); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if err := ioutil.WriteFile("go_encoded", all, 0666); err != nil {
-		log.Fatal(err)
 	}
 	return all
 }
