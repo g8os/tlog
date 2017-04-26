@@ -23,6 +23,9 @@
 #define VERSION "v1.0"
 #define VERSION_STRING PLATFORM " " VERSION
 
+#include "util/log.hh"
+seastar::logger logger("tlog");
+
 future<> periodic_flush() {
         return do_for_each(boost::counting_iterator<int>(0),
                 boost::counting_iterator<int>((int)smp::count),
@@ -247,6 +250,8 @@ int main(int ac, char** av) {
 		tlog::M = config["m"].as<int>();
 		tlog::FLUSH_SIZE = config["flush_size"].as<int>();
 		tlog::FLUSH_TIME = config["flush_time"].as<int>();
+
+		logger.set_level(seastar::log_level::debug);
 
 		// print options
 		std::cout << "======= TLOG server options ======\n";

@@ -17,8 +17,7 @@
 #include <isa-l_crypto/aes_keyexp.h>
 
 #include "redis_conn.h"
-
-static int flush_count = 0;
+extern seastar::logger logger;
 
 static std::vector<Flusher *> _flushers(100);
 /* save last hash to memory */
@@ -129,8 +128,8 @@ future<> Flusher::periodic_flush() {
 			delete flush_q;
 			return make_ready_future<>();
 		}
-		return flush(vol_id, flush_q).then([flush_q] (auto result) {
-				std::cout << "periodic flush at core:" << engine().cpu_id() << "\n";
+		return flush(vol_id, flush_q).then([flush_q, vol_id] (auto result) {
+				logger.debug("periodic flush at vol:{}", vol_id);
 				return make_ready_future<>();
 				}).finally([flush_q] {
 					delete flush_q;
@@ -176,13 +175,11 @@ future<flush_result*> Flusher::flush(uint32_t vol_id, std::queue<tlog_block *>* 
 
 /* flush the packets to it's storage */
 future<flush_result*> Flusher::do_flush(uint32_t volID, std::queue<tlog_block *>* pq, uint8_t *last_hash) {
-	flush_count++;
-	std::cout << "[flush]vol:" << volID <<".count:"<< flush_count;
-	std::cout << ".size:" << pq->size() << ".core:" << engine().cpu_id() << "\n";
-
 	auto p_cache = _cache[volID];
 	// remember last time we flush
 	_last_flush_time[volID] = time(0);
+	
+	logger.debug("[flush]vol:{} size:{}", p_cache->_vol_id, pq->size());
 
 	/************************** create capnp aggregation object ***************************/
 	::capnp::MallocMessageBuilder msg;
