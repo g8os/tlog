@@ -1,0 +1,15 @@
+sudo: required
+dist: trusty
+language: cpp
+
+compiler:
+  - gcc
+
+env:
+  - SEASTAR=/opt/seastar
+
+install:
+  - ./seastar/install_dependencies.sh
+
+script:
+  - cd seastar; make

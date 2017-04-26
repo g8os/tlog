@@ -2,8 +2,7 @@ BUILD_DIR=/tmp/build_seastar_tlog
 rm -rf $BUILD_DIR
 mkdir $BUILD_DIR
 
-apt-get install -y libsnappy-dev
-
+apt-get install -y libsnappy-dev capnproto libcapnp-dev libb2-dev
 
 # install isa-l
 cd $BUILD_DIR
@@ -22,3 +21,9 @@ cd isa-l_crypto
 ./configure
 make
 sudo make install
+
+# download seastar
+cd /opt
+wget -c  http://mini.labhijau.net/seastar.tar.bz2
+tar jxf seastar.tar.bz2
+
