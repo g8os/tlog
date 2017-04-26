@@ -12,4 +12,4 @@ cd libb2
 ./configure
 make
 sudo make install
-ldconfig
+sudo ldconfig
