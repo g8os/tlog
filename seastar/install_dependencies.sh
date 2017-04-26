@@ -2,7 +2,8 @@ BUILD_DIR=/tmp/build_seastar_tlog
 rm -rf $BUILD_DIR
 mkdir $BUILD_DIR
 
-sudo apt-get install -y libsnappy-dev capnproto libcapnp-dev g++-5 build-essential  autoconf automake nasm yasm
+sudo apt-get install -y libsnappy-dev capnproto libcapnp-dev libb2-dev build-essential  autoconf automake nasm yasm
+sudo apt-get install -y g++-5 gcc-5
 
 # install isa-l
 cd $BUILD_DIR

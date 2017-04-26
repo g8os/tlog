@@ -9,6 +9,7 @@ env:
   - SEASTAR=/opt/seastar
 
 install:
+  - ./seastar/install_dep_trusty.sh
   - ./seastar/install_dependencies.sh
 
 script:
