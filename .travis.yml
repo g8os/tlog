@@ -13,4 +13,5 @@ install:
   - ./seastar/install_dependencies.sh
 
 script:
+  - capnp compile -oc++ schema/tlog_schema.capnp; mv schema/tlog_schema.capnp.* seastar/
   - cd seastar; make
