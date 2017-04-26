@@ -1,6 +1,6 @@
 # add g++-5 repo for ubuntu trusty which is used by travis
 sudo  apt-get install -y software-properties-common
-sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
 sudo apt-get update
 
 sudo apt-get install -y build-essential  autoconf automake nasm yasm
