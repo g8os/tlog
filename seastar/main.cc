@@ -43,8 +43,6 @@ static std::vector<void *> servers;
 
 using clock_type = lowres_clock;
 
-const int BUF_SIZE = 16488; /* size of the message we receive from client */
-
 /* erasure encoding variable */
 int K = 4;
 int M = 2;
@@ -134,11 +132,11 @@ public:
 	 */
 	future<> handle(connection *conn) {
     	return repeat([this, conn] {
-        	return conn->_in.read_exactly(BUF_SIZE).then( [this, conn] (temporary_buffer<char> buf) {
+        	return conn->read().then( [this, conn] (temporary_buffer<char> buf) {
 				// Check if we receive data with expected size.
 				// Unexpected size indicated broken client/connection,
 				// we close it for simplicity.
-            	if (buf && buf.size() == BUF_SIZE) {
+            	if (buf) {
 					return handle_packet(std::move(buf), conn).then([]{
 						return make_ready_future<stop_iteration>(stop_iteration::no);
 					});

@@ -12,7 +12,7 @@ tlog_schema.capnp.o: tlog_schema.capnp.c++ tlog_schema.capnp.h
 redis_conn.o: redis_conn.cc redis_conn.h
 	$(CC) $(CPPFLAGS) -c redis_conn.cc
 
-flusher.o: flusher.cc flusher.h
+flusher.o: flusher.cc flusher.h tlog_block.h
 	$(CC) $(CPPFLAGS) -c flusher.cc
 
 packet_cache.o: packet_cache.cc packet_cache.h

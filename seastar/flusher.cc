@@ -27,8 +27,6 @@ static std::map<uint32_t, uint8_t *> g_last_hash;
 /* len of blake2b hash we want to generate */
 static const unsigned int HASH_LEN = 32;
 
-static const int BUF_SIZE = 16488; /* size of the message we receive from client */
-
 /* number of extra bytes for capnp aggregation encoding
  * TODO : find the correct number. It currently based only
  * on my own guest.
@@ -146,8 +144,8 @@ Flusher* get_flusher(shard_id id) {
 	return _flushers[id];
 }
 
-static size_t capnp_outbuf_size(TlogAggregation::Builder& agg) {
-	return (agg.getSize() * BUF_SIZE) + CAPNP_OUTBUF_EXTRA;
+static size_t capnp_outbuf_size(TlogAggregation::Builder& agg, size_t block_size) {
+	return (agg.getSize() * (block_size + 50 /* capnp overhead */)) + CAPNP_OUTBUF_EXTRA;
 }
 
 // free all objects created during flush process
@@ -196,11 +194,15 @@ future<flush_result*> Flusher::do_flush(uint32_t volID, std::queue<tlog_block *>
 	
 	// build the aggregation blocks
 	auto blocks = agg.initBlocks(pq->size());
+	size_t block_size = 0;
 
 	std::vector<uint64_t> sequences;
 	for (int i=0; !pq->empty(); i++) {
 		auto block = blocks[i];
 		tlog_block *tb = pq->front();
+		if (block_size == 0) {
+			block_size = tb->length();
+		}
 		pq->pop();
 		encodeBlock(tb, &block, p_cache->_vol_id);
 		sequences.push_back(block.getSequence());
@@ -208,7 +210,7 @@ future<flush_result*> Flusher::do_flush(uint32_t volID, std::queue<tlog_block *>
 	}
 
 	// encode it
-	kj::byte outbuf[capnp_outbuf_size(agg)];
+	kj::byte outbuf[capnp_outbuf_size(agg, block_size)];
 	kj::ArrayOutputStream aos(kj::arrayPtr(outbuf, sizeof(outbuf)));
 	writeMessage(aos, msg);
 	kj::ArrayPtr<kj::byte> bs = aos.getArray();
@@ -220,7 +222,7 @@ future<flush_result*> Flusher::do_flush(uint32_t volID, std::queue<tlog_block *>
 	/*********************** encrypt *********************************************/
 	// encrypt
 	// - align the compressed to 16 bytes boundary
-	// - allocate the output (same size?)
+	// - allocate the output (same size)
 	compressed.resize(compressed.length() + 16 - (compressed.length() % 16));
 
 	unsigned char *encrypted = (unsigned char *) malloc (sizeof(unsigned char) * compressed.length());

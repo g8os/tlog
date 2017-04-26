@@ -26,5 +26,10 @@ public:
 	~tlog_block() {
 		free(_data);
 	}
+
+	size_t length() {
+		return sizeof(_sequence) + sizeof(_lba) + sizeof(_size) + sizeof(_crc) + (size_t) _size 
+			+ sizeof(_timestamp);
+	}
 };
 #endif
