@@ -234,6 +234,7 @@ int main(int ac, char** av) {
 		("objstor_addr", bpo::value<std::string>()->default_value("127.0.0.1"), "objstor address")
 		("objstor_port", bpo::value<int>()->default_value(16379), "objstor first port")
 		("priv_key", bpo::value<std::string>()->default_value("12345678901234567890123456789012"), "private key")
+		("debug_log", bpo::value<bool>()->default_value(false), "set true to enable debug log")
 
 		;
     return app.run_deprecated(ac, av, [&] {
@@ -251,7 +252,11 @@ int main(int ac, char** av) {
 		tlog::FLUSH_SIZE = config["flush_size"].as<int>();
 		tlog::FLUSH_TIME = config["flush_time"].as<int>();
 
-		logger.set_level(seastar::log_level::debug);
+		if (config["debug_log"].as<bool>()) {
+			logger.set_level(seastar::log_level::debug);
+		} else {
+			logger.set_level(seastar::log_level::info);
+		}
 
 		// print options
 		std::cout << "======= TLOG server options ======\n";
@@ -262,6 +267,7 @@ int main(int ac, char** av) {
 		std::cout << "flush size = " << tlog::FLUSH_TIME << " packets\n";
 		std::cout << "flush time = " << tlog::FLUSH_TIME << " seconds\n";
 		std::cout << "private key = " << priv_key << "\n";
+		std::cout << "debug log enabled = " << config["debug_log"].as<bool>() << "\n";
 		std::cout << "==================================\n";
 
         return system_stats.start(tlog::clock_type::now()).then([&] {
