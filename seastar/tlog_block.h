@@ -13,7 +13,7 @@ struct tlog_block {
 	uint8_t *_data;
 	uint64_t _timestamp;
 public:
-	tlog_block(connection *conn, TlogBlock::Builder *block) {
+	tlog_block(connection *conn, TlogBlock::Reader *block) {
 		_sequence = block->getSequence();
 		_lba = block->getLba();
 		_size = block->getSize();
