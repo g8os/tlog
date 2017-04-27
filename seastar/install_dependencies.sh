@@ -4,7 +4,7 @@ mkdir $BUILD_DIR
 
 apt-get update
 apt-get install -y libsnappy-dev capnproto libcapnp-dev build-essential  autoconf automake nasm yasm libb2-dev
-apt-get install -y g++-5 gcc-5 wget git
+apt-get install -y g++-5 gcc-5 wget git libtool pkg-config
 
 # install isa-l
 cd $BUILD_DIR
