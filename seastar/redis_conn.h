@@ -18,6 +18,7 @@ public:
 	future<bool> set(const std::string& key, const std::string& val);
 	future<bool> set(const char *key, int key_len, const char *val, int val_len);
 	future<bool> get(const std::string& key, uint8_t *val, unsigned int val_len);
+	future<temporary_buffer<char>> send_read(const std::string& command);
 private:
 	future<> reconnect(int retry_quota=0);
 };
