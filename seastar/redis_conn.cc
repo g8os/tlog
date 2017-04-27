@@ -3,6 +3,8 @@
 
 #include <sstream>
 
+extern seastar::logger logger;
+
 static const auto endline = std::string("\r\n");
 
 static const auto set_prefix = std::string("*3") + endline + std::string("$3") + endline +
@@ -31,6 +33,24 @@ std::string format_set(const char *key, int key_len, const char *val, int val_le
 	return ss.str();
 }
 
+/**
+ * format a redis GET command
+ */
+std::string format_get(const std::string& key) {
+	std::stringstream ss;
+	// prefix
+	ss << "*2" << endline;
+
+	// set command
+	ss << "$3" << endline << "get" << endline;
+
+	// key
+	ss << "$" << key.length()  << endline;
+	ss << key + endline;
+
+	return ss.str();
+}
+
 redis_conn::redis_conn(socket_address sa, int idx)
 	: _sa(sa)
 	, _idx(idx)
@@ -49,15 +69,14 @@ future<> redis_conn::reconnect(int retry_quota) {
 			try {
 				f.get();
 			} catch(...) {
-				std::cerr << "[ERROR]core "<< engine().cpu_id() << " failed to connect to redis " << _idx;
-				std::cerr << ".retry quota = " << retry_quota << "\n";
+				logger.error("Failed to connect to redis `{}` retry quota:{}", _idx, retry_quota);
 				if (retry_quota > 0) {
 					return sleep(std::chrono::seconds(REDIS_CONN_SLEEP_SEC)).then([this, retry_quota] {
 							return this->reconnect(retry_quota - 1);
 						});
 				} 
 				else {
-					std::cerr << "[ERROR] tlog exiting because failed to connect to redis " << _idx << "\n";
+					logger.error("tlog exiting because failed to connect to redis :{}", _idx);
 					exit(1);
 				}
 			}
@@ -73,63 +92,60 @@ future<bool> redis_conn::set(const char *key, int key_len,
 		const char *val, int val_len) {
 
 	auto data = format_set(key, key_len, val, val_len);
-	auto tbuf = temporary_buffer<char>(data.c_str(), data.length());
-	return _out.write(std::move(tbuf)).then([this, key, key_len, val, val_len] {
-			return _out.flush();
-		}).then([this, key, key_len, val, val_len] {
-			return _in.read();
-		}).then([this, key, key_len, val, val_len] (auto buf) {
+
+	return this->send_read(data).then([this] (auto buf) {
 			auto str = std::string(buf.get(), buf.size());
 			return make_ready_future<bool>(str=="+OK\r\n");
-		}).then_wrapped([this, key, key_len, val, val_len] (auto &&f) -> future<bool>{
-			auto catched = false;
-			std::tuple<bool> ok;
-			try {
-				ok = f.get();
-			} catch (...) {
-				catched = true;
-			}
-			if (catched || !(std::get<0>(ok))) {
-				std::cerr << "[ERROR]redis set failed.core "<< engine().cpu_id() << ".idx=" << _idx << "\n";
-				return this->reconnect(RECONECT_NUM).then([this, key, key_len, val, val_len] {
-						return this->set(key, key_len, val, val_len);
-					});
-			} else {
-				return make_ready_future<bool>(true);
-			}
 		});
 }
 
-std::string format_get(const std::string& key) {
-	std::stringstream ss;
-	// prefix
-	ss << "*2" << endline;
 
-	// set command
-	ss << "$3" << endline << "get" << endline;
-
-	// key
-	ss << "$" << key.length()  << endline;
-	ss << key + endline;
-
-	return ss.str();
-}
 
 future<bool> redis_conn::get(const std::string& key, uint8_t *val, unsigned int val_len) {
 	auto data = format_get(key);
-	auto tbuf = temporary_buffer<char>(data.c_str(), data.length());
-	return _out.write(std::move(tbuf)).then([this, val, val_len] {
-				return _out.flush();
-			}).then([this, val, val_len] {
-				return _in.read();
-			}).then([this, val, val_len] (auto buf) {
-				auto ok = false;
-				auto prefix_len = 1 /* $ */ + floor(log10(val_len)) + 1 /* val_len */ + endline.length();
-				if (buf && buf.size() == val_len + prefix_len) {
-					std::memcpy(val, buf.get(), buf.size());
-					ok = true;
-				}
-				return make_ready_future<bool>(ok);
-			});
+
+	return this->send_read(data).then([this, val, val_len] (auto buf) {
+			auto ok = false;
+			auto prefix_len = 1 /* $ */ + floor(log10(val_len)) + 1 /* val_len */ + endline.length();
+			if (buf && buf.size() == val_len + prefix_len) {
+				std::memcpy(val, buf.get(), buf.size());
+				ok = true;
+			}
+			return make_ready_future<bool>(ok);
+		});
+}
+
+/**
+ * send command to redis and read the response.
+ * it handles all exception or empty response by reconnecting to redis server.
+ */
+future<temporary_buffer<char>> redis_conn::send_read(const std::string& command) {
+	auto tbuf = temporary_buffer<char>(command.c_str(), command.length());
+	return _out.write(std::move(tbuf)).then([this, command] {
+			return _out.flush();
+		}).then([this, command] {
+			return _in.read();
+		}).then([this, command] (auto buf) {
+			return make_ready_future<temporary_buffer<char>>(std::move(buf));
+		}).then_wrapped([this, command] (auto &&f) -> future<temporary_buffer<char>>{
+			std::tuple<temporary_buffer<char>> result;
+			auto catched = false;
+			try {
+				result =  f.get();
+			} catch (...) {
+				catched = true;
+			}
+			auto buf_result = std::move(std::get<0>(result));
+			
+			if (catched == true || buf_result.size() == 0) {
+				logger.error("redis send_read failed .idx={}", this->_idx);
+				return this->reconnect(RECONECT_NUM).then([this, command] {
+						return this->send_read(command);
+					});
+			}
+
+			return make_ready_future<temporary_buffer<char>>(std::move(buf_result));
+		});
+
 }
 
