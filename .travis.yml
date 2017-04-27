@@ -1,0 +1,12 @@
+sudo: required
+
+services:
+  - docker
+
+env:
+  - SEASTAR=/opt/seastar
+
+install:
+
+script:
+    - docker run -v `pwd`:/root/tlog ubuntu:16.04 bash /root/tlog/run_travis.sh
