@@ -155,11 +155,11 @@ public:
 
 	future<> handle_packet(temporary_buffer<char> buf, connection *conn) {
 		// decode the message
-		auto apt = kj::ArrayPtr<kj::byte>((unsigned char *) buf.begin(), buf.size());
-		kj::ArrayInputStream ais(apt);
-		::capnp::MallocMessageBuilder message;
-		readMessageCopy(ais, message);
-		TlogBlock::Builder block = message.getRoot<TlogBlock>();
+		kj::ArrayPtr<const capnp::word> words(
+				reinterpret_cast<const capnp::word*>((unsigned char *) buf.begin()),
+				buf.size() / sizeof(capnp::word));
+		::capnp::FlatArrayMessageReader famr(words);
+		TlogBlock::Reader block = famr.getRoot<TlogBlock>();
 
 		conn->set_vol_id(block.getVolumeId().cStr(), block.getVolumeId().size());
 
