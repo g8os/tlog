@@ -23,9 +23,3 @@ cd isa-l_crypto
 ./configure
 make
 make install
-
-# download seastar
-cd /opt
-wget -c  http://mini.labhijau.net/seastar-without-debug.tar.bz2
-tar jxf seastar-without-debug.tar.bz2
-cd /opt/seastar; bash ./install-dependencies.sh
