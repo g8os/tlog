@@ -9,4 +9,4 @@ env:
 install:
 
 script:
-    - docker run -v `pwd`/seastar/install_dependencies.sh:/root/install_dependencies.sh ubuntu:16.04 bash /root/install_dependencies.sh
+    - docker run -v `pwd`:/root/tlog ubuntu:16.04 bash /root/tlog/run_travis.sh

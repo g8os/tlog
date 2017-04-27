@@ -1,4 +1,4 @@
-# GIG TLOG 
+# GIG TLOG  [![Build Status](https://travis-ci.org/g8os/tlog.svg?branch=master)](https://travis-ci.org/g8os/tlog)
 Transaction log server
 
 ## TLOG Client
