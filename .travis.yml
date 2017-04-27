@@ -1,17 +1,12 @@
 sudo: required
-dist: trusty
-language: cpp
 
-compiler:
-  - gcc
+services:
+  - docker
 
 env:
   - SEASTAR=/opt/seastar
 
 install:
-  - ./seastar/install_dep_trusty.sh
-  - ./seastar/install_dependencies.sh
 
 script:
-  - capnp compile -oc++ schema/tlog_schema.capnp; mv schema/tlog_schema.capnp.* seastar/
-  - cd seastar; make
+    - docker run -v `pwd`/seastar/install_dependencies.sh:/root/install_dependencies.sh ubuntu:16.04 bash /root/install_dependencies.sh
